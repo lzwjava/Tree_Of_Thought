@@ -1,0 +1,17 @@
+name: tot
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python>=3.10
+  - sympy>=1.12
+  - numpy
+  - scipy
+  - pip
+  - pip:
+      - fastapi
+      - uvicorn
+      - openai
+      - pydantic 
+      - python-dotenv
+      - requests

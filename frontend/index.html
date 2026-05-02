@@ -1,0 +1,184 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ToT Terminal</title>
+  <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+  <div id="app" class="shell">
+    <header class="masthead panel">
+      <div>
+        <div class="tiny-label">AGENT TREE HARNESS SYSTEM</div>
+        <pre class="hero-art" aria-hidden="true"> _____ ___ _____
+|_   _/ _ \_   _|
+  | || | | || |
+  | || |_| || |
+  |_| \___/ |_|   terminal tree explorer</pre>
+      </div>
+      <div class="masthead-meta">
+        <div id="statusLine" class="status-line status-idle">SYSTEM READY // no session attached</div>
+        <div class="shortcut-line">ARROWS move  LEFT/RIGHT fold  SHIFT+ARROWS pan  / search  ENTER next match  R refresh  P poll  E run  DELETE remove</div>
+      </div>
+    </header>
+
+    <div class="workspace-grid">
+      <aside class="panel controls-panel">
+        <div class="panel-title">COMMAND DECK</div>
+        <div class="controls-intro meta-line">Start <code class="inline-code">python tot_api.py</code>, open <code class="inline-code">127.0.0.1:8000</code>, then create or attach a session.</div>
+
+        <section class="panel-section quickstart-section">
+          <div class="section-title">LAST ACTION</div>
+          <div id="actionFeedback" class="action-feedback status-idle" aria-live="polite">
+            <div id="actionFeedbackTitle" class="action-feedback-title">No request yet.</div>
+            <div id="actionFeedbackDetail" class="action-feedback-detail">Use Create Session to start a new run or Load Session State to reconnect to an existing session.</div>
+          </div>
+        </section>
+
+        <section class="panel-section quickstart-section">
+          <div class="section-title">STATUS LOG</div>
+          <div id="statusLog" class="status-log" aria-live="polite">
+            <div class="status-log-empty">No status history yet.</div>
+          </div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title">NEW SESSION</div>
+          <label class="field-label" for="problemPromptInput">Problem to solve</label>
+          <textarea id="problemPromptInput" class="code-input compact-textarea" spellcheck="false" placeholder="Example: derive the steady-state solution of the 1D diffusion equation under the given boundary conditions, then compare alternative modeling branches in the ToT tree."></textarea>
+          <div class="meta-line">required before creating a new session</div>
+        </section>
+
+        <section class="panel-section">
+          <div class="section-title">SESSION</div>
+          <label class="field-label" for="sessionIdInput">Session id</label>
+          <div class="field-row">
+            <input id="sessionIdInput" class="text-input" type="text" placeholder="paste an existing session id">
+            <button id="attachSessionButton" class="action-button secondary" type="button">LOAD SESSION STATE</button>
+          </div>
+          <div class="button-grid compact">
+            <button id="createSessionButton" class="action-button primary" type="button">CREATE SESSION</button>
+            <button id="refreshSessionButton" class="action-button secondary" type="button">REFRESH STATE</button>
+            <button id="runSessionButton" class="action-button secondary" type="button">RUN NEXT STEP</button>
+            <button id="dropSessionButton" class="action-button danger" type="button">DROP SESSION</button>
+          </div>
+          <div class="action-legend" aria-label="session action meanings">
+            <div class="action-legend-item"><strong>Load Session State</strong><span>Reconnect to an existing session id and fetch its latest tree.</span></div>
+            <div class="action-legend-item"><strong>Create Session</strong><span>Start a new session from the current problem and settings.</span></div>
+            <div class="action-legend-item"><strong>Refresh State</strong><span>Fetch the latest backend snapshot without spending more budget.</span></div>
+            <div class="action-legend-item"><strong>Run Next Step</strong><span>Spend the budget shown below and ask the scheduler to expand the tree.</span></div>
+            <div class="action-legend-item"><strong>Drop Session</strong><span>Delete the current backend session and clear the UI.</span></div>
+          </div>
+          <div class="field-row field-row-tight">
+            <div class="field-grow">
+              <label class="field-label" for="budgetInput">Run budget</label>
+              <input id="budgetInput" class="text-input" type="number" min="0" step="1" value="1">
+            </div>
+            <label class="toggle-row" for="runOnCreateToggle">
+              <input id="runOnCreateToggle" type="checkbox" checked>
+              <span>run on create</span>
+            </label>
+          </div>
+        </section>
+
+        <details class="panel-section collapsible-section">
+          <summary class="section-title collapsible-title">TREE TOOLS</summary>
+
+          <div class="subsection-title">Search</div>
+          <label class="field-label" for="searchInput">Query</label>
+          <div class="field-row">
+            <input id="searchInput" class="text-input" type="search" placeholder="eq, node id, status, known var...">
+            <button id="prevMatchButton" class="action-button secondary icon-button" type="button">PREV</button>
+            <button id="nextMatchButton" class="action-button secondary icon-button" type="button">NEXT</button>
+          </div>
+          <div id="searchMeta" class="meta-line">0 matches</div>
+          <div class="field-row field-row-tight">
+            <label class="toggle-row" for="pollingToggle">
+              <input id="pollingToggle" type="checkbox" checked>
+              <span>auto refresh</span>
+            </label>
+            <div class="field-grow">
+              <label class="field-label" for="pollIntervalInput">Interval ms</label>
+              <input id="pollIntervalInput" class="text-input" type="number" min="1000" step="1000" value="1000">
+            </div>
+          </div>
+
+          <div class="subsection-title">Tree</div>
+          <div class="button-grid compact">
+            <button id="expandAllButton" class="action-button secondary" type="button">EXPAND ALL</button>
+            <button id="collapseAllButton" class="action-button secondary" type="button">COLLAPSE ALL</button>
+          </div>
+          <label class="field-label" for="deleteReasonInput">Delete reason</label>
+          <textarea id="deleteReasonInput" class="code-input compact-textarea" spellcheck="false">Prune low-value branch after operator review.</textarea>
+          <button id="deleteNodeButton" class="action-button danger" type="button">DELETE SELECTED NODE</button>
+        </details>
+
+        <details class="panel-section collapsible-section">
+          <summary class="section-title collapsible-title">ADVANCED SETTINGS</summary>
+
+          <div class="subsection-title">Backend connection</div>
+          <div class="button-grid compact">
+            <button id="applyRecommendedPresetButton" class="action-button secondary" type="button">APPLY RECOMMENDED PRESET</button>
+          </div>
+          <div class="panel-note">Recommended now: qwen3.5-9b-mlx planner, gpt-oss-120b modeling, qwen/qwen3-4b-2507 review, qwen2.5-0.5b-instruct-mlx for non-terminal evaluation.</div>
+          <label class="field-label" for="baseUrlInput">Base URL</label>
+          <input id="baseUrlInput" class="text-input" type="text" value="http://localhost:1234/api/v1/chat">
+          <label class="field-label" for="planningModelInput">Planning model</label>
+          <input id="planningModelInput" class="text-input" type="text" value="qwen3.5-9b-mlx">
+          <label class="field-label" for="modelingModelInput">Modeling model</label>
+          <input id="modelingModelInput" class="text-input" type="text" value="openai/gpt-oss-120b">
+          <label class="field-label" for="reviewModelInput">Review model</label>
+          <input id="reviewModelInput" class="text-input" type="text" value="qwen/qwen3-4b-2507">
+          <label class="field-label" for="nonTerminalEvaluationModelInput">Non-terminal evaluation model</label>
+          <input id="nonTerminalEvaluationModelInput" class="text-input" type="text" value="qwen2.5-0.5b-instruct-mlx">
+          <label class="field-label" for="timeoutInput">Timeout seconds</label>
+          <input id="timeoutInput" class="text-input" type="number" min="1" step="1" value="120">
+
+          <div class="subsection-title">JSON payloads</div>
+          <label class="field-label" for="problemContextInput">Problem context JSON</label>
+          <textarea id="problemContextInput" class="code-input" spellcheck="false"></textarea>
+          <label class="field-label" for="schedulerConfigInput">Scheduler config JSON</label>
+          <textarea id="schedulerConfigInput" class="code-input compact-textarea" spellcheck="false"></textarea>
+        </details>
+      </aside>
+
+      <main class="panel tree-panel">
+        <div class="panel-title">TREE CANVAS</div>
+        <div class="tree-summary-bar">
+          <div id="treeStats" class="meta-line">no tree loaded</div>
+          <div id="selectionStats" class="meta-line">selection: none</div>
+        </div>
+        <div id="treeViewport" class="tree-viewport" tabindex="0" aria-label="ToT ASCII tree viewport">
+          <div id="treeLines" class="tree-lines"></div>
+        </div>
+      </main>
+
+      <aside class="side-stack">
+        <section class="panel detail-panel">
+          <div class="panel-title">NODE INSPECTOR</div>
+          <div id="detailSummary" class="meta-line">no node selected</div>
+          <div id="detailBody" class="detail-body">
+            <div class="detail-empty">Attach a session to inspect the current tree.</div>
+          </div>
+        </section>
+
+        <section class="panel frontier-panel">
+          <div class="panel-title">FRONTIER</div>
+          <div id="frontierList" class="list-panel"></div>
+        </section>
+
+        <section class="panel activity-panel">
+          <div class="panel-title">ACTIVITY</div>
+          <pre id="activityLog" class="detail-pre">No events yet.</pre>
+        </section>
+      </aside>
+    </div>
+  </div>
+
+  <noscript>
+    <div class="noscript-banner">This GUI requires JavaScript to talk to the ToT API.</div>
+  </noscript>
+  <script src="/static/app.js" defer></script>
+</body>
+</html>
