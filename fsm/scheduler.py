@@ -210,8 +210,9 @@ class ToTTreeScheduler:
 
                 parent_node.known_vars["sibling_ranking"] = sibling_ranking
 
-                frontier_budget = self._frontier_enqueue_budget(problem_context)
-                for child_node, child_context in expandable_candidates[:frontier_budget]:
+                frontier_candidate_budget = self._frontier_candidate_budget(problem_context)
+                frontier_candidates = expandable_candidates[:frontier_candidate_budget]
+                for child_node, child_context in frontier_candidates:
                     self._frontier.append(
                         {
                             "node": child_node,
@@ -235,6 +236,10 @@ class ToTTreeScheduler:
                         "depth": depth,
                         "expanded": True,
                         "child_ids": [child.id for child, _ in ranked_children],
+                        "frontier_candidate_ids": [
+                            child.id
+                            for child, _ in frontier_candidates
+                        ],
                         "retained_frontier_ids": [
                             child.id
                             for child, _ in ranked_children
@@ -741,10 +746,13 @@ class ToTTreeScheduler:
             ),
         )
 
-    def _frontier_enqueue_budget(self, problem_context: Optional[dict[str, Any]] = None) -> int:
+    def _frontier_candidate_budget(self, problem_context: Optional[dict[str, Any]] = None) -> int:
         if self._is_root_strategy_scan_route_surface(problem_context):
             return max(1, self.max_frontier_size)
-        return max(1, min(self.max_children_per_expansion, self.max_frontier_size))
+        # Cap only the sibling slice for this expansion. Frontier capacity is
+        # enforced later in _rebalance_frontier so lower-scored but distinct
+        # route families or correction modes can still compete for retention.
+        return max(1, self.max_children_per_expansion)
 
     def _is_root_strategy_scan_route_surface(self, problem_context: Optional[dict[str, Any]]) -> bool:
         if not isinstance(problem_context, dict) or not problem_context:

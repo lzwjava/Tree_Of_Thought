@@ -4505,6 +4505,60 @@ class TreeSchedulerTests(unittest.TestCase):
 
         self.assertEqual(retained_route_families, {"energy", "force-balance"})
 
+    def test_tree_scheduler_logs_full_candidate_slice_before_diversity_rebalance(self) -> None:
+        scheduler = ToTTreeScheduler(
+            root_problem_context={
+                "proposal": {"equations": ["root_eq"]},
+                "calculation": {"skill_params": {"required_equation_patterns": ["root_eq"]}},
+                "evaluation": {"score": 8.0},
+                "children": [
+                    {
+                        "proposal": {
+                            "equations": ["child_energy_a"],
+                            "used_models": ["Work-Energy Theorem"],
+                            "known_vars": {"route_family": "energy"},
+                        },
+                        "calculation": {"skill_params": {"required_equation_patterns": ["child_energy_a"]}},
+                        "evaluation": {"score": 9.5},
+                        "children": [{"proposal": {"equations": ["grand_energy_a"]}, "calculation": {"skill_params": {"required_equation_patterns": ["grand_energy_a"]}}, "evaluation": {"score": 8.0}}],
+                    },
+                    {
+                        "proposal": {
+                            "equations": ["child_energy_b"],
+                            "used_models": ["Work-Energy Theorem"],
+                            "known_vars": {"route_family": "energy"},
+                        },
+                        "calculation": {"skill_params": {"required_equation_patterns": ["child_energy_b"]}},
+                        "evaluation": {"score": 9.4},
+                        "children": [{"proposal": {"equations": ["grand_energy_b"]}, "calculation": {"skill_params": {"required_equation_patterns": ["grand_energy_b"]}}, "evaluation": {"score": 8.0}}],
+                    },
+                    {
+                        "proposal": {
+                            "equations": ["child_force"],
+                            "used_models": ["Newton's Second Law"],
+                            "known_vars": {"route_family": "force-balance"},
+                        },
+                        "calculation": {"skill_params": {"required_equation_patterns": ["child_force"]}},
+                        "evaluation": {"score": 7.0},
+                        "children": [{"proposal": {"equations": ["grand_force"]}, "calculation": {"skill_params": {"required_equation_patterns": ["grand_force"]}}, "evaluation": {"score": 8.0}}],
+                    },
+                ],
+            },
+            expansion_budget=1,
+            max_frontier_size=2,
+            max_children_per_expansion=3,
+            max_reflections=0,
+        )
+
+        result = scheduler.run()
+        root = result["root"]
+        child_force = next(child for child in root.children if child.equations == ["child_force"])
+        expansion_entry = result["expansion_log"][0]
+
+        self.assertEqual(len(expansion_entry["frontier_candidate_ids"]), 3)
+        self.assertIn(child_force.id, expansion_entry["frontier_candidate_ids"])
+        self.assertEqual(len(expansion_entry["retained_frontier_ids"]), 2)
+
     def test_tree_scheduler_keeps_distinct_correction_modes_within_same_route_family(self) -> None:
         scheduler = ToTTreeScheduler(
             root_problem_context={
@@ -4572,6 +4626,84 @@ class TreeSchedulerTests(unittest.TestCase):
         }
 
         self.assertEqual(retained_correction_modes, {"linear drag closure", "quadratic drag closure"})
+
+    def test_tree_scheduler_rebalances_against_full_candidate_slice_with_existing_frontier_entries(self) -> None:
+        scheduler = ToTTreeScheduler(
+            root_problem_context={
+                "proposal": {"equations": ["root_eq"]},
+                "calculation": {"skill_params": {"required_equation_patterns": ["root_eq"]}},
+                "evaluation": {"score": 8.0},
+                "children": [
+                    {
+                        "proposal": {
+                            "equations": ["child_energy_root"],
+                            "used_models": ["Work-Energy Theorem"],
+                            "known_vars": {"route_family": "energy"},
+                        },
+                        "calculation": {"skill_params": {"required_equation_patterns": ["child_energy_root"]}},
+                        "evaluation": {"score": 9.5},
+                        "children": [
+                            {
+                                "proposal": {
+                                    "equations": ["grand_energy_a"],
+                                    "used_models": ["Work-Energy Theorem"],
+                                    "known_vars": {"route_family": "energy"},
+                                },
+                                "calculation": {"skill_params": {"required_equation_patterns": ["grand_energy_a"]}},
+                                "evaluation": {"score": 9.6},
+                                "children": [{"proposal": {"equations": ["great_energy_a"]}, "calculation": {"skill_params": {"required_equation_patterns": ["great_energy_a"]}}, "evaluation": {"score": 8.0}}],
+                            },
+                            {
+                                "proposal": {
+                                    "equations": ["grand_energy_b"],
+                                    "used_models": ["Work-Energy Theorem"],
+                                    "known_vars": {"route_family": "energy"},
+                                },
+                                "calculation": {"skill_params": {"required_equation_patterns": ["grand_energy_b"]}},
+                                "evaluation": {"score": 9.5},
+                                "children": [{"proposal": {"equations": ["great_energy_b"]}, "calculation": {"skill_params": {"required_equation_patterns": ["great_energy_b"]}}, "evaluation": {"score": 8.0}}],
+                            },
+                            {
+                                "proposal": {
+                                    "equations": ["grand_force"],
+                                    "used_models": ["Newton's Second Law"],
+                                    "known_vars": {"route_family": "force-balance"},
+                                },
+                                "calculation": {"skill_params": {"required_equation_patterns": ["grand_force"]}},
+                                "evaluation": {"score": 7.0},
+                                "children": [{"proposal": {"equations": ["great_force"]}, "calculation": {"skill_params": {"required_equation_patterns": ["great_force"]}}, "evaluation": {"score": 8.0}}],
+                            },
+                        ],
+                    },
+                    {
+                        "proposal": {
+                            "equations": ["child_momentum_root"],
+                            "used_models": ["Linear Momentum"],
+                            "known_vars": {"route_family": "momentum"},
+                        },
+                        "calculation": {"skill_params": {"required_equation_patterns": ["child_momentum_root"]}},
+                        "evaluation": {"score": 8.8},
+                        "children": [{"proposal": {"equations": ["grand_momentum"]}, "calculation": {"skill_params": {"required_equation_patterns": ["grand_momentum"]}}, "evaluation": {"score": 8.0}}],
+                    },
+                ],
+            },
+            expansion_budget=2,
+            max_frontier_size=2,
+            max_children_per_expansion=3,
+            max_reflections=0,
+        )
+
+        result = scheduler.run()
+        root = result["root"]
+        child_energy = next(child for child in root.children if child.equations == ["child_energy_root"])
+        grand_force = next(child for child in child_energy.children if child.equations == ["grand_force"])
+        expansion_entry = next(
+            entry for entry in result["expansion_log"] if entry.get("parent_id") == child_energy.id
+        )
+
+        self.assertEqual(len(expansion_entry["frontier_candidate_ids"]), 3)
+        self.assertIn(grand_force.id, expansion_entry["frontier_candidate_ids"])
+        self.assertEqual(len(result["frontier"]), 2)
 
     def test_tree_scheduler_logs_pruned_nodes_in_activity_log(self) -> None:
         scheduler = ToTTreeScheduler(
