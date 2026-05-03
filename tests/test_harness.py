@@ -1219,6 +1219,69 @@ class SkillInvokerTests(unittest.TestCase):
         self.assertIn(r"\nabla \cdot \mathbf{E} = \rho / \varepsilon_0", em_formulas)
         self.assertNotEqual(thermo_formulas, em_formulas)
 
+    def test_validation_plugin_bundle_prefers_explicit_skill_validators(self) -> None:
+        result = invoke_skill(
+            "tot_validation_plugin_bundle",
+            {
+                "skill_names": ["partition_function"],
+            },
+        )
+
+        self.assertEqual(result["selection_mode"], "explicit")
+        self.assertEqual(result["selected_validators"][0]["skill_name"], "partition_function")
+        self.assertIn(
+            "beta",
+            result["hard_rule_params"]["required_any_context_patterns"],
+        )
+
+    def test_validation_plugin_bundle_normalizes_nested_validation_rules(self) -> None:
+        result = invoke_skill(
+            "tot_validation_plugin_bundle",
+            {
+                "domain_plugins": [
+                    {
+                        "name": "microeconomics",
+                        "label": "Microeconomics",
+                        "validation_rules": {
+                            "equations": {
+                                "require_any_patterns": ["Q_s", "Q_d"],
+                                "forbid_patterns": ["F = m a"],
+                            },
+                            "models": {
+                                "require_exact": ["Supply-demand equilibrium"],
+                                "require_any_patterns": ["elasticity", "market-clearing"],
+                            },
+                            "context": {
+                                "require_all_patterns": ["market", "equilibrium"],
+                                "forbid_patterns": ["lorentz"],
+                            },
+                            "variables": {
+                                "require_known": ["p"],
+                                "nonzero": ["p"],
+                            },
+                            "flags": {
+                                "require_equations": True,
+                                "semantic_boundary_checks": False,
+                            },
+                            "violations": {
+                                "append": ["custom plugin check"],
+                            },
+                        },
+                    }
+                ],
+            },
+        )
+
+        self.assertEqual(result["selection_mode"], "custom")
+        self.assertEqual(result["hard_rule_params"]["required_any_equation_patterns"], ["Q_s", "Q_d"])
+        self.assertEqual(result["hard_rule_params"]["required_models"], ["Supply-demand equilibrium"])
+        self.assertEqual(result["hard_rule_params"]["required_any_model_patterns"], ["elasticity", "market-clearing"])
+        self.assertEqual(result["hard_rule_params"]["required_all_context_patterns"], ["market", "equilibrium"])
+        self.assertEqual(result["hard_rule_params"]["required_known_vars"], ["p"])
+        self.assertEqual(result["hard_rule_params"]["nonzero_var_names"], ["p"])
+        self.assertFalse(result["hard_rule_params"]["semantic_boundary_checks"])
+        self.assertEqual(result["hard_rule_params"]["custom_violations"], ["custom plugin check"])
+
     def test_hard_rule_check_validates_models_and_boundary_conditions(self) -> None:
         result = invoke_skill(
             "tot_hard_rule_check",
@@ -1250,6 +1313,84 @@ class SkillInvokerTests(unittest.TestCase):
             "Boundary condition value depends on constrained axis: x=0",
             result["violations"],
         )
+
+    def test_hard_rule_check_uses_selected_skill_validation_plugins(self) -> None:
+        result = invoke_skill(
+            "tot_hard_rule_check",
+            {
+                "skill_names": ["partition_function"],
+                "equations": ["F = m a"],
+            },
+        )
+
+        self.assertFalse(result["passed"])
+        self.assertIn(
+            "No context matches any required pattern: partition | beta | ln z | z = | boltzmann",
+            result["violations"],
+        )
+        self.assertEqual(result["checked"]["validation_plugin_selection_mode"], "explicit")
+        self.assertEqual(
+            result["checked"]["validation_plugins"][0]["skill_names"],
+            ["partition_function"],
+        )
+
+    def test_hard_rule_check_supports_nested_validation_rule_groups(self) -> None:
+        result = invoke_skill(
+            "tot_hard_rule_check",
+            {
+                "domain_plugins": [
+                    {
+                        "name": "microeconomics",
+                        "label": "Microeconomics",
+                        "validation_rules": {
+                            "equations": {
+                                "require_any_patterns": ["Q_s", "Q_d"],
+                            },
+                            "context": {
+                                "require_all_patterns": ["market", "equilibrium"],
+                            },
+                        },
+                    }
+                ],
+                "equations": ["F = m a"],
+                "thought_step": "Use a force balance.",
+            },
+        )
+
+        self.assertFalse(result["passed"])
+        self.assertIn(
+            "No equation matches any required pattern: Q_s | Q_d",
+            result["violations"],
+        )
+        self.assertIn("No context matches required pattern: market", result["violations"])
+        self.assertIn("No context matches required pattern: equilibrium", result["violations"])
+        self.assertEqual(result["checked"]["required_any_equation_patterns"], ["Q_s", "Q_d"])
+        self.assertEqual(result["checked"]["required_all_context_patterns"], ["market", "equilibrium"])
+
+    def test_hard_rule_check_uses_thought_step_for_context_patterns(self) -> None:
+        result = invoke_skill(
+            "tot_hard_rule_check",
+            {
+                "domain_plugins": [
+                    {
+                        "name": "microeconomics",
+                        "label": "Microeconomics",
+                        "validation_rules": {
+                            "equations": {
+                                "require_any_patterns": ["Q_s", "Q_d"],
+                            },
+                            "context": {
+                                "require_all_patterns": ["market", "equilibrium"],
+                            },
+                        },
+                    }
+                ],
+                "equations": ["Q_s(p) = Q_d(p)"],
+                "thought_step": "Use the market equilibrium condition.",
+            },
+        )
+
+        self.assertTrue(result["passed"])
 
     def test_stage_prompt_contract_marks_proposal_as_single_step(self) -> None:
         result = invoke_skill("tot_stage_prompt_contract", {"stage": "proposal"})
@@ -3282,6 +3423,87 @@ class NodeHarnessTests(unittest.TestCase):
         self.assertEqual(node.thought_step, "Replace the forbidden root draft with a revised seed branch.")
         self.assertEqual(node.equations, ["eq1"])
         self.assertEqual(len(node.reflection_history), 1)
+        self.assertNotIn("hard_rule_violations", node.known_vars)
+
+    def test_root_skill_validation_mismatch_goes_to_reflection(self) -> None:
+        fsm = NodeBuilderFSM(
+            parent_node=None,
+            problem_context={
+                "skill_names": ["partition_function"],
+                "proposal": {
+                    "thought_step": "Use a mechanics-style relation first.",
+                    "equations": ["F = m a"],
+                },
+                "calculation": {},
+                "reflection": {
+                    "thought_step": "Switch to a partition-function state sum.",
+                    "equations": ["Z = exp(-beta E0)"],
+                },
+                "evaluation": {"score": 8.0},
+            },
+            max_reflections=0,
+        )
+
+        node = fsm.run()
+
+        self.assertEqual(node.status, NodeStatus.ACTIVE)
+        self.assertEqual(node.thought_step, "Switch to a partition-function state sum.")
+        self.assertEqual(node.equations, ["Z = exp(-beta E0)"])
+        self.assertEqual(
+            node.known_vars["hard_rule_check"]["checked"]["validation_plugin_selection_mode"],
+            "explicit",
+        )
+        self.assertEqual(
+            node.known_vars["hard_rule_check"]["checked"]["validation_plugins"][0]["skill_names"],
+            ["partition_function"],
+        )
+        self.assertEqual(
+            node.reflection_history,
+            ["No context matches any required pattern: partition | beta | ln z | z = | boltzmann"],
+        )
+        self.assertNotIn("hard_rule_violations", node.known_vars)
+
+    def test_root_nested_validation_rule_group_mismatch_goes_to_reflection(self) -> None:
+        fsm = NodeBuilderFSM(
+            parent_node=None,
+            problem_context={
+                "domain_plugins": [
+                    {
+                        "name": "microeconomics",
+                        "label": "Microeconomics",
+                        "validation_rules": {
+                            "equations": {
+                                "require_any_patterns": ["Q_s", "Q_d"],
+                            },
+                            "context": {
+                                "require_all_patterns": ["market", "equilibrium"],
+                            },
+                        },
+                    }
+                ],
+                "proposal": {
+                    "thought_step": "Use a force balance first.",
+                    "equations": ["F = m a"],
+                },
+                "calculation": {},
+                "reflection": {
+                    "thought_step": "Use the market equilibrium condition.",
+                    "equations": ["Q_s(p) = Q_d(p)"],
+                },
+                "evaluation": {"score": 8.0},
+            },
+            max_reflections=0,
+        )
+
+        node = fsm.run()
+
+        self.assertEqual(node.status, NodeStatus.ACTIVE)
+        self.assertEqual(node.thought_step, "Use the market equilibrium condition.")
+        self.assertEqual(node.equations, ["Q_s(p) = Q_d(p)"])
+        self.assertIn(
+            "No equation matches any required pattern: Q_s | Q_d",
+            node.reflection_history[0],
+        )
         self.assertNotIn("hard_rule_violations", node.known_vars)
 
     def test_meta_task_scope_keeps_jump_ahead_diagnostics_without_reflection(self) -> None:

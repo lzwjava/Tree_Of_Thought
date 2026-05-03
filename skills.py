@@ -2926,6 +2926,8 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
         Variable names that must exist in ``known_vars``.
     required_equation_patterns
         String fragments that must appear in at least one equation.
+    required_any_equation_patterns
+        String fragments where at least one must appear in the candidate equations.
     forbidden_equation_patterns
         String fragments that must not appear in any equation.
     used_models
@@ -2936,6 +2938,8 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
         Exact model names that must not appear in ``used_models``.
     required_model_patterns
         String fragments that must appear in at least one model name.
+    required_any_model_patterns
+        String fragments where at least one must appear in the active model list.
     forbidden_model_patterns
         String fragments that must not appear in any model name.
     boundary_conditions
@@ -2946,6 +2950,8 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
         Boundary-condition keys that must not exist.
     required_boundary_condition_patterns
         String fragments that must appear in at least one rendered boundary condition.
+    required_any_boundary_condition_patterns
+        String fragments where at least one must appear in the rendered boundary conditions.
     forbidden_boundary_condition_patterns
         String fragments that must not appear in any rendered boundary condition.
     required_boundary_conditions
@@ -2955,6 +2961,15 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
     semantic_boundary_checks
         If ``True`` (default), run semantic consistency checks on boundary-condition
         axes and value dependencies instead of relying only on exact or pattern matching.
+    required_all_context_patterns
+        String fragments that must all appear somewhere across equations, thought_step,
+        models, known variables, meta-task text, or boundary-condition text.
+    required_any_context_patterns
+        String fragments where at least one must appear somewhere across equations,
+        models, known variables, or boundary-condition text.
+    forbidden_any_context_patterns
+        String fragments that must not appear anywhere across equations, models,
+        known variables, or boundary-condition text.
     dimension_equalities
         List of checks of the form ``{"left": ..., "right": ..., "label": ...}``.
         Each side may be a SymPy unit expression, a dimension expression, or the
@@ -2976,91 +2991,188 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
         checks for later auditing.
     """
 
-    equations = [str(item) for item in params.get("equations", [])]
-    known_vars = dict(params.get("known_vars", {}))
-    used_models = [str(item) for item in params.get("used_models", [])]
+    validation_bundle = tot_validation_plugin_bundle(params)
+    effective_params = _merge_validation_rule_params(
+        validation_bundle.get("hard_rule_params", {}),
+        _normalize_validation_rule_params(params),
+    )
+    for key, value in params.items():
+        if key not in effective_params:
+            effective_params[key] = value
+
+    equations = [str(item) for item in effective_params.get("equations", [])]
+    known_vars = dict(effective_params.get("known_vars", {}))
+    used_models = [str(item) for item in effective_params.get("used_models", [])]
     boundary_conditions = {
-        str(key): value for key, value in dict(params.get("boundary_conditions", {})).items()
+        str(key): value for key, value in dict(effective_params.get("boundary_conditions", {})).items()
     }
     boundary_text = _boundary_condition_text(boundary_conditions)
     violations: List[str] = []
     dimension_results: List[Dict[str, Any]] = []
-    meta_task = dict(params.get("meta_task", {})) if isinstance(params.get("meta_task"), dict) else {}
-    meta_task_progress = (
-        dict(params.get("meta_task_progress", {}))
-        if isinstance(params.get("meta_task_progress"), dict)
+    meta_task = (
+        dict(effective_params.get("meta_task", {}))
+        if isinstance(effective_params.get("meta_task"), dict)
         else {}
     )
-    thought_step = str(params.get("thought_step", ""))
+    meta_task_progress = (
+        dict(effective_params.get("meta_task_progress", {}))
+        if isinstance(effective_params.get("meta_task_progress"), dict)
+        else {}
+    )
+    thought_step = str(effective_params.get("thought_step", ""))
+    problem_context = (
+        dict(effective_params.get("problem_context", {}))
+        if isinstance(effective_params.get("problem_context"), dict)
+        else {}
+    )
+    context_text = " ".join(
+        [
+            *equations,
+            *used_models,
+            *boundary_text,
+            thought_step,
+            str(problem_context.get("problem_statement", "")),
+            str(problem_context.get("task", "")),
+            str(problem_context.get("skill_query", "")),
+            str(meta_task.get("objective", "")),
+            str(meta_task.get("first_step", "")),
+            *[str(item) for item in meta_task.get("step_ordering", [])],
+            str(meta_task_progress.get("current_step", "")),
+            str(meta_task_progress.get("current_step_guidance", "")),
+            *[str(item) for item in meta_task_progress.get("previous_steps", [])],
+            *[str(item) for item in meta_task_progress.get("remaining_steps", [])],
+            *[str(key) for key in known_vars.keys()],
+            *[str(value) for value in known_vars.values()],
+        ]
+    ).lower()
 
-    if params.get("require_equations", True) and not equations:
+    if effective_params.get("require_equations", True) and not equations:
         violations.append("No candidate equations were provided for hard-rule checking.")
 
-    required_known_vars = [str(name) for name in params.get("required_known_vars", [])]
+    required_known_vars = [str(name) for name in effective_params.get("required_known_vars", [])]
     for name in required_known_vars:
         if name not in known_vars:
             violations.append(f"Missing required variable: {name}")
 
-    required_patterns = [str(pattern) for pattern in params.get("required_equation_patterns", [])]
+    required_patterns = [str(pattern) for pattern in effective_params.get("required_equation_patterns", [])]
     for pattern in required_patterns:
         if not any(pattern in equation for equation in equations):
             violations.append(f"No equation matches required pattern: {pattern}")
 
-    forbidden_patterns = [str(pattern) for pattern in params.get("forbidden_equation_patterns", [])]
+    required_any_equation_patterns = [
+        str(pattern) for pattern in effective_params.get("required_any_equation_patterns", [])
+    ]
+    if required_any_equation_patterns and not any(
+        any(pattern in equation for equation in equations)
+        for pattern in required_any_equation_patterns
+    ):
+        violations.append(
+            "No equation matches any required pattern: " + " | ".join(required_any_equation_patterns)
+        )
+
+    forbidden_patterns = [str(pattern) for pattern in effective_params.get("forbidden_equation_patterns", [])]
     for pattern in forbidden_patterns:
         if any(pattern in equation for equation in equations):
             violations.append(f"Equation matches forbidden pattern: {pattern}")
 
-    required_models = [str(model) for model in params.get("required_models", [])]
+    required_models = [str(model) for model in effective_params.get("required_models", [])]
     for model in required_models:
         if model not in used_models:
             violations.append(f"Missing required model: {model}")
 
-    forbidden_models = [str(model) for model in params.get("forbidden_models", [])]
+    forbidden_models = [str(model) for model in effective_params.get("forbidden_models", [])]
     for model in forbidden_models:
         if model in used_models:
             violations.append(f"Forbidden model used: {model}")
 
-    required_model_patterns = [str(pattern) for pattern in params.get("required_model_patterns", [])]
+    required_model_patterns = [str(pattern) for pattern in effective_params.get("required_model_patterns", [])]
     for pattern in required_model_patterns:
         if not _contains_pattern(used_models, pattern):
             violations.append(f"No model matches required pattern: {pattern}")
 
-    forbidden_model_patterns = [str(pattern) for pattern in params.get("forbidden_model_patterns", [])]
+    required_any_model_patterns = [
+        str(pattern) for pattern in effective_params.get("required_any_model_patterns", [])
+    ]
+    if required_any_model_patterns and not any(
+        _contains_pattern(used_models, pattern)
+        for pattern in required_any_model_patterns
+    ):
+        violations.append(
+            "No model matches any required pattern: " + " | ".join(required_any_model_patterns)
+        )
+
+    forbidden_model_patterns = [str(pattern) for pattern in effective_params.get("forbidden_model_patterns", [])]
     for pattern in forbidden_model_patterns:
         if _contains_pattern(used_models, pattern):
             violations.append(f"Model matches forbidden pattern: {pattern}")
 
     required_boundary_condition_keys = [
-        str(key) for key in params.get("required_boundary_condition_keys", [])
+        str(key) for key in effective_params.get("required_boundary_condition_keys", [])
     ]
     for key in required_boundary_condition_keys:
         if key not in boundary_conditions:
             violations.append(f"Missing required boundary condition key: {key}")
 
     forbidden_boundary_condition_keys = [
-        str(key) for key in params.get("forbidden_boundary_condition_keys", [])
+        str(key) for key in effective_params.get("forbidden_boundary_condition_keys", [])
     ]
     for key in forbidden_boundary_condition_keys:
         if key in boundary_conditions:
             violations.append(f"Forbidden boundary condition key present: {key}")
 
     required_boundary_condition_patterns = [
-        str(pattern) for pattern in params.get("required_boundary_condition_patterns", [])
+        str(pattern) for pattern in effective_params.get("required_boundary_condition_patterns", [])
     ]
     for pattern in required_boundary_condition_patterns:
         if not _contains_pattern(boundary_text, pattern):
             violations.append(f"No boundary condition matches required pattern: {pattern}")
 
+    required_any_boundary_condition_patterns = [
+        str(pattern)
+        for pattern in effective_params.get("required_any_boundary_condition_patterns", [])
+    ]
+    if required_any_boundary_condition_patterns and not any(
+        _contains_pattern(boundary_text, pattern)
+        for pattern in required_any_boundary_condition_patterns
+    ):
+        violations.append(
+            "No boundary condition matches any required pattern: "
+            + " | ".join(required_any_boundary_condition_patterns)
+        )
+
     forbidden_boundary_condition_patterns = [
-        str(pattern) for pattern in params.get("forbidden_boundary_condition_patterns", [])
+        str(pattern) for pattern in effective_params.get("forbidden_boundary_condition_patterns", [])
     ]
     for pattern in forbidden_boundary_condition_patterns:
         if _contains_pattern(boundary_text, pattern):
             violations.append(f"Boundary condition matches forbidden pattern: {pattern}")
 
+    required_all_context_patterns = [
+        str(pattern) for pattern in effective_params.get("required_all_context_patterns", [])
+    ]
+    for pattern in required_all_context_patterns:
+        if pattern.lower() not in context_text:
+            violations.append(f"No context matches required pattern: {pattern}")
+
+    required_any_context_patterns = [
+        str(pattern) for pattern in effective_params.get("required_any_context_patterns", [])
+    ]
+    if required_any_context_patterns and not any(
+        pattern.lower() in context_text for pattern in required_any_context_patterns
+    ):
+        violations.append(
+            "No context matches any required pattern: " + " | ".join(required_any_context_patterns)
+        )
+
+    forbidden_any_context_patterns = [
+        str(pattern) for pattern in effective_params.get("forbidden_any_context_patterns", [])
+    ]
+    for pattern in forbidden_any_context_patterns:
+        if pattern.lower() in context_text:
+            violations.append(f"Context matches forbidden pattern: {pattern}")
+
     required_boundary_conditions = {
-        str(key): value for key, value in dict(params.get("required_boundary_conditions", {})).items()
+        str(key): value for key, value in dict(effective_params.get("required_boundary_conditions", {})).items()
     }
     for key, value in required_boundary_conditions.items():
         if key not in boundary_conditions:
@@ -3072,13 +3184,13 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
             )
 
     forbidden_boundary_conditions = {
-        str(key): value for key, value in dict(params.get("forbidden_boundary_conditions", {})).items()
+        str(key): value for key, value in dict(effective_params.get("forbidden_boundary_conditions", {})).items()
     }
     for key, value in forbidden_boundary_conditions.items():
         if key in boundary_conditions and boundary_conditions[key] == value:
             violations.append(f"Forbidden boundary condition present: {key} = {value!r}")
 
-    semantic_boundary_checks = bool(params.get("semantic_boundary_checks", True))
+    semantic_boundary_checks = bool(effective_params.get("semantic_boundary_checks", True))
     semantic_boundary_violations: List[str] = []
     if semantic_boundary_checks and boundary_conditions:
         semantic_boundary_violations = _semantic_boundary_condition_violations(
@@ -3095,10 +3207,10 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
         boundary_conditions=boundary_conditions,
         meta_task=meta_task,
         meta_task_progress=meta_task_progress,
-        enforce_scope=bool(params.get("enforce_meta_task_step_scope", False)),
+        enforce_scope=bool(effective_params.get("enforce_meta_task_step_scope", False)),
     )
 
-    for item in params.get("dimension_equalities", []):
+    for item in effective_params.get("dimension_equalities", []):
         if not isinstance(item, dict):
             raise TypeError("Each dimension equality check must be a dictionary.")
         left = _resolve_rule_value(item["left"], known_vars)
@@ -3118,28 +3230,28 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
         if not passed:
             violations.append(f"Dimension mismatch: {label}")
 
-    for name in params.get("positive_var_names", []):
+    for name in effective_params.get("positive_var_names", []):
         if name not in known_vars:
             continue
         value = sp.sympify(known_vars[name])
         if value.is_positive is False:
             violations.append(f"Variable must be positive: {name}")
 
-    for name in params.get("nonzero_var_names", []):
+    for name in effective_params.get("nonzero_var_names", []):
         if name not in known_vars:
             continue
         value = sp.sympify(known_vars[name])
         if value.is_zero is True:
             violations.append(f"Variable must be nonzero: {name}")
 
-    for name in params.get("finite_var_names", []):
+    for name in effective_params.get("finite_var_names", []):
         if name not in known_vars:
             continue
         value = sp.sympify(known_vars[name])
         if value.is_finite is False:
             violations.append(f"Variable must be finite: {name}")
 
-    custom_violations = [str(item) for item in params.get("custom_violations", [])]
+    custom_violations = [str(item) for item in effective_params.get("custom_violations", [])]
     violations.extend(custom_violations)
 
     return {
@@ -3152,24 +3264,41 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
             "boundary_conditions": boundary_conditions,
             "required_known_vars": required_known_vars,
             "required_equation_patterns": required_patterns,
+            "required_any_equation_patterns": required_any_equation_patterns,
             "forbidden_equation_patterns": forbidden_patterns,
             "required_models": required_models,
             "forbidden_models": forbidden_models,
             "required_model_patterns": required_model_patterns,
+            "required_any_model_patterns": required_any_model_patterns,
             "forbidden_model_patterns": forbidden_model_patterns,
             "required_boundary_condition_keys": required_boundary_condition_keys,
             "forbidden_boundary_condition_keys": forbidden_boundary_condition_keys,
             "required_boundary_condition_patterns": required_boundary_condition_patterns,
+            "required_any_boundary_condition_patterns": required_any_boundary_condition_patterns,
             "forbidden_boundary_condition_patterns": forbidden_boundary_condition_patterns,
+            "required_all_context_patterns": required_all_context_patterns,
+            "required_any_context_patterns": required_any_context_patterns,
+            "forbidden_any_context_patterns": forbidden_any_context_patterns,
             "required_boundary_conditions": required_boundary_conditions,
             "forbidden_boundary_conditions": forbidden_boundary_conditions,
             "semantic_boundary_checks": semantic_boundary_checks,
             "semantic_boundary_violations": semantic_boundary_violations,
             "meta_task_step_scope": meta_task_scope,
             "dimension_equalities": dimension_results,
-            "positive_var_names": [str(name) for name in params.get("positive_var_names", [])],
-            "nonzero_var_names": [str(name) for name in params.get("nonzero_var_names", [])],
-            "finite_var_names": [str(name) for name in params.get("finite_var_names", [])],
+            "positive_var_names": [str(name) for name in effective_params.get("positive_var_names", [])],
+            "nonzero_var_names": [str(name) for name in effective_params.get("nonzero_var_names", [])],
+            "finite_var_names": [str(name) for name in effective_params.get("finite_var_names", [])],
+            "validation_plugin_selection_mode": validation_bundle.get("selection_mode", "fallback"),
+            "validation_plugins": [
+                {
+                    "name": validator.get("name", ""),
+                    "label": validator.get("label", ""),
+                    "skill_names": list(validator.get("skill_names", [])),
+                    "summary": validator.get("summary", ""),
+                    "hard_rule_params": dict(validator.get("hard_rule_params", {})),
+                }
+                for validator in validation_bundle.get("selected_validators", [])
+            ],
         },
     }
 
@@ -3850,6 +3979,97 @@ TOT_SKILL_TEMPLATE_OVERRIDES: Dict[str, Dict[str, Any]] = {
 }
 
 
+TOT_SKILL_VALIDATION_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "lagrangian_equations": {
+        "summary": "Validate variational mechanics steps by checking for Lagrangian or Euler-Lagrange structure.",
+        "hard_rule_params": {
+            "required_any_context_patterns": [
+                "lagrangian",
+                "euler-lagrange",
+                "generalized coordinate",
+                "\\dot{q}",
+                "\\partial l",
+            ],
+        },
+    },
+    "maxwell_equations_check": {
+        "summary": "Validate electromagnetic field steps by checking for Maxwell-style field/source structure.",
+        "hard_rule_params": {
+            "required_any_context_patterns": [
+                "maxwell",
+                "\\nabla",
+                "\\mathbf{e}",
+                "\\mathbf{b}",
+                "electric",
+                "magnetic",
+            ],
+        },
+    },
+    "schrodinger_1d": {
+        "summary": "Validate one-dimensional quantum steps by checking for wavefunction, Hamiltonian, or potential structure.",
+        "hard_rule_params": {
+            "required_any_context_patterns": [
+                "schrodinger",
+                "\\psi",
+                "\\hbar",
+                "potential",
+                "eigenvalue",
+            ],
+        },
+    },
+    "partition_function": {
+        "summary": "Validate canonical-ensemble steps by checking for partition-function or Boltzmann-weight structure.",
+        "hard_rule_params": {
+            "required_any_context_patterns": [
+                "partition",
+                "beta",
+                "ln z",
+                "z =",
+                "boltzmann",
+            ],
+            "positive_var_names": ["Z"],
+        },
+    },
+    "continuity_equation": {
+        "summary": "Validate transport steps by checking for continuity or mass-conservation structure.",
+        "hard_rule_params": {
+            "required_any_context_patterns": [
+                "continuity",
+                "mass conservation",
+                "\\nabla \\cdot",
+                "\\rho",
+                "\\mathbf{u}",
+            ],
+        },
+    },
+    "lorentz_transform_event": {
+        "summary": "Validate relativistic frame-change steps by checking for Lorentz-transform or invariant structure.",
+        "hard_rule_params": {
+            "required_any_context_patterns": [
+                "lorentz",
+                "boost",
+                "gamma",
+                "interval",
+                "four-vector",
+            ],
+        },
+    },
+    "thin_lens_matrix": {
+        "summary": "Validate paraxial-optics steps by checking for thin-lens or ABCD-matrix structure.",
+        "hard_rule_params": {
+            "required_any_context_patterns": [
+                "lens",
+                "abcd",
+                "1/f",
+                "focal",
+                "matrix",
+            ],
+            "nonzero_var_names": ["f"],
+        },
+    },
+}
+
+
 def _ordered_unique_strings(items: Sequence[Any]) -> List[str]:
     values: List[str] = []
     for item in items:
@@ -3931,6 +4151,322 @@ def _skill_names_for_module(module: str) -> List[str]:
         for skill_name, entry in SKILL_REGISTRY.items()
         if entry.get("module") == module and not skill_name.startswith("tot_")
     )
+
+
+_VALIDATION_RULE_STRING_LIST_KEYS: Tuple[str, ...] = (
+    "required_known_vars",
+    "required_equation_patterns",
+    "required_any_equation_patterns",
+    "forbidden_equation_patterns",
+    "required_models",
+    "forbidden_models",
+    "required_model_patterns",
+    "required_any_model_patterns",
+    "forbidden_model_patterns",
+    "required_boundary_condition_keys",
+    "forbidden_boundary_condition_keys",
+    "required_boundary_condition_patterns",
+    "required_any_boundary_condition_patterns",
+    "forbidden_boundary_condition_patterns",
+    "required_all_context_patterns",
+    "required_any_context_patterns",
+    "forbidden_any_context_patterns",
+    "positive_var_names",
+    "nonzero_var_names",
+    "finite_var_names",
+    "custom_violations",
+)
+_VALIDATION_RULE_DICT_KEYS: Tuple[str, ...] = (
+    "required_boundary_conditions",
+    "forbidden_boundary_conditions",
+)
+_VALIDATION_RULE_STRUCTURED_LIST_KEYS: Tuple[str, ...] = ("dimension_equalities",)
+_VALIDATION_RULE_BOOL_KEYS: Tuple[str, ...] = (
+    "require_equations",
+    "semantic_boundary_checks",
+)
+
+
+def _normalize_validation_rule_params(params: Dict[str, Any]) -> Dict[str, Any]:
+    normalized: Dict[str, Any] = {}
+    for key in _VALIDATION_RULE_STRING_LIST_KEYS:
+        if key in params:
+            normalized[key] = _ordered_unique_strings(params.get(key, []))
+    for key in _VALIDATION_RULE_DICT_KEYS:
+        if key in params:
+            raw_value = params.get(key, {})
+            normalized[key] = (
+                {str(item_key): item_value for item_key, item_value in dict(raw_value).items()}
+                if isinstance(raw_value, dict)
+                else {}
+            )
+    for key in _VALIDATION_RULE_STRUCTURED_LIST_KEYS:
+        if key in params:
+            raw_items = params.get(key, [])
+            normalized[key] = [item for item in raw_items if isinstance(item, dict)]
+    for key in _VALIDATION_RULE_BOOL_KEYS:
+        if key in params:
+            normalized[key] = bool(params.get(key))
+
+    section_aliases: Dict[str, Any] = {}
+
+    equations_rules = params.get("equations")
+    if isinstance(equations_rules, dict):
+        section_aliases["required_equation_patterns"] = _ordered_unique_strings(
+            [
+                *equations_rules.get("require_all_patterns", []),
+                *equations_rules.get("require_patterns", []),
+            ]
+        )
+        section_aliases["required_any_equation_patterns"] = _ordered_unique_strings(
+            equations_rules.get("require_any_patterns", [])
+        )
+        section_aliases["forbidden_equation_patterns"] = _ordered_unique_strings(
+            equations_rules.get("forbid_patterns", [])
+        )
+
+    models_rules = params.get("models")
+    if isinstance(models_rules, dict):
+        section_aliases["required_models"] = _ordered_unique_strings(models_rules.get("require_exact", []))
+        section_aliases["forbidden_models"] = _ordered_unique_strings(models_rules.get("forbid_exact", []))
+        section_aliases["required_model_patterns"] = _ordered_unique_strings(
+            [
+                *models_rules.get("require_all_patterns", []),
+                *models_rules.get("require_patterns", []),
+            ]
+        )
+        section_aliases["required_any_model_patterns"] = _ordered_unique_strings(
+            models_rules.get("require_any_patterns", [])
+        )
+        section_aliases["forbidden_model_patterns"] = _ordered_unique_strings(
+            models_rules.get("forbid_patterns", [])
+        )
+
+    boundary_rules = params.get("boundary_conditions")
+    if isinstance(boundary_rules, dict):
+        section_aliases["required_boundary_condition_keys"] = _ordered_unique_strings(
+            boundary_rules.get("require_keys", [])
+        )
+        section_aliases["forbidden_boundary_condition_keys"] = _ordered_unique_strings(
+            boundary_rules.get("forbid_keys", [])
+        )
+        section_aliases["required_boundary_condition_patterns"] = _ordered_unique_strings(
+            [
+                *boundary_rules.get("require_all_patterns", []),
+                *boundary_rules.get("require_patterns", []),
+            ]
+        )
+        section_aliases["required_any_boundary_condition_patterns"] = _ordered_unique_strings(
+            boundary_rules.get("require_any_patterns", [])
+        )
+        section_aliases["forbidden_boundary_condition_patterns"] = _ordered_unique_strings(
+            boundary_rules.get("forbid_patterns", [])
+        )
+        require_matches = boundary_rules.get("require_matches", {})
+        if isinstance(require_matches, dict):
+            section_aliases["required_boundary_conditions"] = require_matches
+        forbid_matches = boundary_rules.get("forbid_matches", {})
+        if isinstance(forbid_matches, dict):
+            section_aliases["forbidden_boundary_conditions"] = forbid_matches
+
+    context_rules = params.get("context")
+    if isinstance(context_rules, dict):
+        section_aliases["required_all_context_patterns"] = _ordered_unique_strings(
+            [
+                *context_rules.get("require_all_patterns", []),
+                *context_rules.get("require_patterns", []),
+            ]
+        )
+        section_aliases["required_any_context_patterns"] = _ordered_unique_strings(
+            context_rules.get("require_any_patterns", [])
+        )
+        section_aliases["forbidden_any_context_patterns"] = _ordered_unique_strings(
+            context_rules.get("forbid_patterns", [])
+        )
+
+    variables_rules = params.get("variables")
+    if isinstance(variables_rules, dict):
+        section_aliases["required_known_vars"] = _ordered_unique_strings(
+            variables_rules.get("require_known", [])
+        )
+        section_aliases["positive_var_names"] = _ordered_unique_strings(variables_rules.get("positive", []))
+        section_aliases["nonzero_var_names"] = _ordered_unique_strings(variables_rules.get("nonzero", []))
+        section_aliases["finite_var_names"] = _ordered_unique_strings(variables_rules.get("finite", []))
+
+    dimensions_rules = params.get("dimensions")
+    if isinstance(dimensions_rules, dict):
+        equalities = dimensions_rules.get("equalities", [])
+        if isinstance(equalities, list):
+            section_aliases["dimension_equalities"] = [item for item in equalities if isinstance(item, dict)]
+
+    flags_rules = params.get("flags")
+    if isinstance(flags_rules, dict):
+        if "require_equations" in flags_rules:
+            section_aliases["require_equations"] = bool(flags_rules.get("require_equations"))
+        if "semantic_boundary_checks" in flags_rules:
+            section_aliases["semantic_boundary_checks"] = bool(flags_rules.get("semantic_boundary_checks"))
+
+    violations_rules = params.get("violations")
+    if isinstance(violations_rules, dict):
+        section_aliases["custom_violations"] = _ordered_unique_strings(violations_rules.get("append", []))
+
+    return _merge_validation_rule_params(normalized, section_aliases)
+
+
+def _merge_validation_rule_params(defaults: Dict[str, Any], overrides: Dict[str, Any]) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    for key in _VALIDATION_RULE_BOOL_KEYS:
+        if key in overrides:
+            merged[key] = bool(overrides[key])
+        elif key in defaults:
+            merged[key] = bool(defaults[key])
+    for key in _VALIDATION_RULE_STRING_LIST_KEYS:
+        values = _ordered_unique_strings([*defaults.get(key, []), *overrides.get(key, [])])
+        if values:
+            merged[key] = values
+    for key in _VALIDATION_RULE_DICT_KEYS:
+        values = {
+            **dict(defaults.get(key, {})),
+            **dict(overrides.get(key, {})),
+        }
+        if values:
+            merged[key] = values
+    for key in _VALIDATION_RULE_STRUCTURED_LIST_KEYS:
+        values = list(defaults.get(key, []))
+        for item in overrides.get(key, []):
+            if item not in values:
+                values.append(item)
+        if values:
+            merged[key] = values
+    return merged
+
+
+def _combine_validation_rule_sets(rule_sets: Sequence[Dict[str, Any]]) -> Dict[str, Any]:
+    merged: Dict[str, Any] = {}
+    for rule_set in rule_sets:
+        merged = _merge_validation_rule_params(merged, _normalize_validation_rule_params(rule_set))
+    return merged
+
+
+def _default_skill_validation_template(skill_name: str) -> Dict[str, Any]:
+    entry = get_skill_entry(skill_name)
+    module = str(entry.get("module", "")).strip()
+    summary = str(entry.get("summary", "")).strip()
+    return {
+        "name": skill_name,
+        "label": skill_name,
+        "skill_name": skill_name,
+        "module": module,
+        "summary": summary,
+        "skill_names": [skill_name],
+        "hard_rule_params": {"require_equations": True},
+    }
+
+
+def _build_skill_validation_template(skill_name: str) -> Dict[str, Any]:
+    template = _default_skill_validation_template(skill_name)
+    override = TOT_SKILL_VALIDATION_OVERRIDES.get(skill_name, {})
+    if override:
+        if "label" in override:
+            template["label"] = str(override["label"]).strip() or template["label"]
+        if "module" in override:
+            template["module"] = str(override["module"]).strip() or template["module"]
+        if "summary" in override:
+            template["summary"] = str(override["summary"]).strip() or template["summary"]
+        template["hard_rule_params"] = _merge_validation_rule_params(
+            template["hard_rule_params"],
+            _normalize_validation_rule_params(dict(override.get("hard_rule_params", {}))),
+        )
+    return template
+
+
+def _normalize_validation_plugin(plugin: Dict[str, Any], *, fallback_name: str) -> Dict[str, Any]:
+    name = str(plugin.get("name", fallback_name)).strip() or fallback_name
+    label = str(plugin.get("label", name)).strip() or name
+    module = str(plugin.get("module", "")).strip()
+    summary = str(plugin.get("summary", "")).strip()
+    skill_names = _ordered_unique_strings(plugin.get("skill_names", []))
+    if not skill_names and module:
+        skill_names = _skill_names_for_module(module)
+    hard_rule_params = _normalize_validation_rule_params(dict(plugin.get("validation_rules", {})))
+    return {
+        "name": name,
+        "label": label,
+        "module": module,
+        "summary": summary,
+        "skill_names": skill_names,
+        "hard_rule_params": hard_rule_params,
+    }
+
+
+def tot_validation_plugin_bundle(params: Dict[str, Any]) -> Dict[str, Any]:
+    r"""Build a pluggable validation bundle that injects skill-specific hard-rule parameters.
+
+    ``validation_rules`` may be supplied either as flat ``tot_hard_rule_check`` keys
+    or as nested sections:
+
+    - ``equations``: ``require_patterns`` / ``require_all_patterns``, ``require_any_patterns``, ``forbid_patterns``
+    - ``models``: ``require_exact``, ``require_patterns`` / ``require_all_patterns``, ``require_any_patterns``, ``forbid_exact``, ``forbid_patterns``
+    - ``boundary_conditions``: ``require_keys``, ``forbid_keys``, ``require_patterns`` / ``require_all_patterns``, ``require_any_patterns``, ``forbid_patterns``, ``require_matches``, ``forbid_matches``
+    - ``context``: ``require_patterns`` / ``require_all_patterns``, ``require_any_patterns``, ``forbid_patterns``
+    - ``variables``: ``require_known``, ``positive``, ``nonzero``, ``finite``
+    - ``dimensions``: ``equalities``
+    - ``flags``: ``require_equations``, ``semantic_boundary_checks``
+    - ``violations``: ``append``
+
+    The bundle normalizes these forms into the flat hard-rule parameter surface
+    consumed by ``tot_hard_rule_check``.
+    """
+
+    problem_context = dict(params.get("problem_context", {})) if isinstance(params.get("problem_context"), dict) else {}
+    explicit_skill_names = params.get("skill_names", problem_context.get("skill_names", []))
+    if isinstance(explicit_skill_names, (str, bytes)):
+        explicit_skill_names = [str(explicit_skill_names)]
+    elif explicit_skill_names in (None, ""):
+        explicit_skill_names = []
+    else:
+        explicit_skill_names = [str(item) for item in explicit_skill_names]
+    explicit_skill_names = _ordered_unique_strings(explicit_skill_names)
+
+    selected_validators: List[Dict[str, Any]] = []
+    selection_mode = "fallback"
+    if explicit_skill_names:
+        selected_validators = [
+            _build_skill_validation_template(skill_name)
+            for skill_name in explicit_skill_names
+            if skill_name in SKILL_REGISTRY
+        ]
+        if selected_validators:
+            selection_mode = "explicit"
+    else:
+        custom_plugins = params.get("domain_plugins", problem_context.get("domain_plugins", []))
+        if custom_plugins in (None, ""):
+            custom_plugins = []
+        if custom_plugins and not isinstance(custom_plugins, list):
+            raise TypeError("domain_plugins must be a list of plugin dictionaries.")
+        selected_validators = [
+            _normalize_validation_plugin(item, fallback_name=f"custom-validator-{index + 1}")
+            for index, item in enumerate(custom_plugins)
+            if isinstance(item, dict)
+            and isinstance(item.get("validation_rules"), dict)
+            and item.get("validation_rules")
+        ]
+        if selected_validators:
+            selection_mode = "custom"
+
+    hard_rule_params = _combine_validation_rule_sets(
+        [validator.get("hard_rule_params", {}) for validator in selected_validators]
+    )
+    return {
+        "selection_mode": selection_mode,
+        "selected_validators": selected_validators,
+        "recommended_skills": _ordered_unique_strings(
+            skill_name
+            for validator in selected_validators
+            for skill_name in validator.get("skill_names", [])
+        ),
+        "hard_rule_params": hard_rule_params,
+    }
 
 
 def _normalize_domain_plugin(plugin: Dict[str, Any], *, fallback_name: str) -> Dict[str, Any]:
@@ -4933,6 +5469,16 @@ SKILL_REGISTRY: Dict[str, Dict[str, Any]] = {
         returns="dict",
         summary="Apply deterministic veto rules such as missing variables, forbidden patterns, and dimension mismatches.",
         keywords=("hard rule", "validation", "dimension check", "veto", "tot"),
+    ),
+    "tot_validation_plugin_bundle": _skill_entry(
+        tot_validation_plugin_bundle,
+        module="Extended Utilities",
+        section="7.x",
+        call_style="params_dict",
+        signature="tot_validation_plugin_bundle(params: dict) -> dict",
+        returns="dict",
+        summary="Build a pluggable validation bundle with skill-specific deterministic hard-rule parameters.",
+        keywords=("plugin", "validation", "hard rule", "deterministic", "tot"),
     ),
     "tot_domain_plugin_bundle": _skill_entry(
         tot_domain_plugin_bundle,

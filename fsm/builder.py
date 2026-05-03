@@ -92,10 +92,16 @@ class NodeBuilderFSM:
         "No candidate equations were provided for hard-rule checking.",
         "Missing required variable:",
         "No equation matches required pattern:",
+        "No equation matches any required pattern:",
         "Missing required model:",
         "No model matches required pattern:",
+        "No model matches any required pattern:",
         "Missing required boundary condition key:",
         "No boundary condition matches required pattern:",
+        "No boundary condition matches any required pattern:",
+        "No context matches required pattern:",
+        "No context matches any required pattern:",
+        "Context matches forbidden pattern:",
         "Missing required boundary condition:",
     )
     BOUNDARY_GROUNDING_VIOLATION_PREFIX = "Boundary condition key is not grounded in equations or known variables:"
@@ -1006,6 +1012,22 @@ class NodeBuilderFSM:
         skill_params.setdefault("used_models", list(used_models))
         skill_params.setdefault("boundary_conditions", dict(boundary_conditions))
         skill_params.setdefault("thought_step", str(self.node.thought_step))
+
+        validation_context: dict[str, Any] = {}
+        for key in ("skill_names", "domain_plugins", "domain", "discipline", "skill_query"):
+            value = self.problem_context.get(key)
+            if value in (None, "", [], {}):
+                continue
+            if isinstance(value, dict):
+                validation_context[key] = dict(value)
+            elif isinstance(value, list):
+                validation_context[key] = list(value)
+            else:
+                validation_context[key] = value
+            skill_params.setdefault(key, validation_context[key])
+        if validation_context:
+            skill_params.setdefault("problem_context", dict(validation_context))
+
         if self._is_equation_optional_meta_task_context() and not self._flatten_string_items(
             skill_params.get("equations")
         ):
