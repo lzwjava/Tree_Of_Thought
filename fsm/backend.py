@@ -945,11 +945,43 @@ class LocalChatAPIClient:
         )
         with urlopen(request, timeout=timeout) as response:
             raw = response.read().decode("utf-8")
-
         try:
             return json.loads(raw)
         except json.JSONDecodeError:
             return raw
+
+
+def make_openai_requester(api_key: str) -> "ChatRequester":
+    """Return a requester that speaks the OpenAI messages format with Bearer auth.
+
+    Converts the internal {system_prompt, input} payload to {messages:[...]}
+    so any OpenAI-compatible API (OpenRouter, OpenAI, etc.) works out of the box.
+    """
+    def _requester(url: str, payload: dict[str, Any], timeout: float) -> Any:
+        messages: list[dict[str, str]] = []
+        sp = payload.get("system_prompt", "")
+        if sp:
+            messages.append({"role": "system", "content": sp})
+        messages.append({"role": "user", "content": payload.get("input", "")})
+        oai_payload = {
+            "model": payload.get("model", ""),
+            "messages": messages,
+        }
+        body = json.dumps(oai_payload).encode("utf-8")
+        headers = {
+            "Accept": "application/json",
+            "Content-Type": "application/json",
+            "Authorization": f"Bearer {api_key}",
+        }
+        request = Request(url, data=body, headers=headers, method="POST")
+        with urlopen(request, timeout=timeout) as response:
+            raw = response.read().decode("utf-8")
+        try:
+            return json.loads(raw)
+        except json.JSONDecodeError:
+            return raw
+
+    return _requester
 
 
 class ProposalRequest(BaseModel):
@@ -3147,6 +3179,7 @@ def build_local_chat_adapter_bundle(
     max_retries: int = 1,
     retry_backoff_seconds: float = 0.25,
     requester: Optional[ChatRequester] = None,
+    api_key: str = "",
     planning_model: str = DEFAULT_PLANNING_MODEL,
     modeling_model: str = DEFAULT_MODELING_MODEL,
     review_model: str = DEFAULT_REVIEW_MODEL,
@@ -3154,12 +3187,13 @@ def build_local_chat_adapter_bundle(
 ) -> tuple[Callable[[dict[str, Any]], ReasoningBackendAdapter], NodeDeletionReviewAdapter]:
     """Build the planning, modeling, and review adapters for the local ``/api/v1/chat`` endpoint."""
 
+    resolved_requester = requester or (make_openai_requester(api_key) if api_key else None)
     client = LocalChatAPIClient(
         base_url=base_url,
         timeout=timeout,
         max_retries=max_retries,
         retry_backoff_seconds=retry_backoff_seconds,
-        requester=requester,
+        requester=resolved_requester,
     )
 
     def backend_adapter_factory(problem_context: dict[str, Any]) -> ReasoningBackendAdapter:

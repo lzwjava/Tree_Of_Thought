@@ -8,8 +8,13 @@ from threading import RLock, Thread
 from typing import Any, Callable, Optional, TypeVar
 from uuid import uuid4
 
+import os
+
 import uvicorn
+from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
+
+load_dotenv()
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -55,11 +60,11 @@ AdapterBundleFactory = Callable[
 
 
 class ChatBackendConfig(BaseModel):
-    base_url: str = DEFAULT_CHAT_API_URL
-    planning_model: str = DEFAULT_PLANNING_MODEL
-    modeling_model: str = DEFAULT_MODELING_MODEL
-    review_model: str = DEFAULT_REVIEW_MODEL
-    non_terminal_evaluation_model: str = DEFAULT_NON_TERMINAL_EVALUATION_MODEL
+    base_url: str = Field(default_factory=lambda: os.getenv("CHAT_BASE_URL", DEFAULT_CHAT_API_URL))
+    planning_model: str = Field(default_factory=lambda: os.getenv("PLANNING_MODEL", DEFAULT_PLANNING_MODEL))
+    modeling_model: str = Field(default_factory=lambda: os.getenv("MODELING_MODEL", DEFAULT_MODELING_MODEL))
+    review_model: str = Field(default_factory=lambda: os.getenv("REVIEW_MODEL", DEFAULT_REVIEW_MODEL))
+    non_terminal_evaluation_model: str = Field(default_factory=lambda: os.getenv("NON_TERMINAL_EVALUATION_MODEL", DEFAULT_NON_TERMINAL_EVALUATION_MODEL))
     timeout: float = Field(default=60.0, gt=0.0)
 
 
@@ -243,6 +248,7 @@ def _default_adapter_bundle_factory(
     return build_local_chat_adapter_bundle(
         base_url=config.base_url,
         timeout=config.timeout,
+        api_key=os.getenv("OPENROUTER_API_KEY", ""),
         planning_model=config.planning_model,
         modeling_model=config.modeling_model,
         review_model=config.review_model,
