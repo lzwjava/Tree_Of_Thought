@@ -1138,6 +1138,87 @@ class SkillInvokerTests(unittest.TestCase):
         self.assertIn("lorentz_boost_matrix", names)
         self.assertIn("relativistic_energy_momentum", names)
 
+    def test_domain_plugin_bundle_infers_builtin_plugin(self) -> None:
+        result = invoke_skill(
+            "tot_domain_plugin_bundle",
+            {
+                "problem_statement": "A charged particle moves through an electromagnetic field.",
+            },
+        )
+
+        self.assertEqual(result["selection_mode"], "inferred")
+        plugin_labels = {item["label"] for item in result["selected_plugins"]}
+        self.assertIn("Electrodynamics", plugin_labels)
+        latex_values = {item["latex"] for item in result["representative_formulas"]}
+        self.assertIn(r"\nabla \cdot \mathbf{E} = \rho / \varepsilon_0", latex_values)
+        self.assertIn("Knowledge scope:", result["prompt_fragment"])
+
+    def test_domain_plugin_bundle_accepts_custom_plugins(self) -> None:
+        result = invoke_skill(
+            "tot_domain_plugin_bundle",
+            {
+                "problem_context": {
+                    "problem_statement": "Find the equilibrium market price.",
+                    "domain_plugins": [
+                        {
+                            "name": "microeconomics",
+                            "label": "Microeconomics",
+                            "summary": "Custom plugin for supply-demand equilibrium reasoning.",
+                            "knowledge_scope": ["supply curve", "demand curve", "equilibrium condition"],
+                            "representative_formulas": [
+                                {
+                                    "latex": r"Q_s(p) = Q_d(p)",
+                                    "meaning": "Market-clearing equilibrium condition.",
+                                }
+                            ],
+                            "route_seed_options": [
+                                {
+                                    "label": "market-clearing route",
+                                    "route_family": "market-clearing",
+                                    "governing_models": ["Supply-demand equilibrium"],
+                                    "guidance": "Choose one equilibrium relation before adding elasticities or shocks.",
+                                    "correction_mode": "equilibrium-first scan",
+                                    "correction_target": "market-clearing condition",
+                                }
+                            ],
+                        }
+                    ],
+                }
+            },
+        )
+
+        self.assertEqual(result["selection_mode"], "custom")
+        self.assertEqual(result["selected_plugins"][0]["label"], "Microeconomics")
+        self.assertEqual(result["representative_formulas"][0]["latex"], r"Q_s(p) = Q_d(p)")
+        self.assertEqual(result["route_seed_options"][0]["route_family"], "market-clearing")
+
+    def test_domain_plugin_bundle_prefers_explicit_skill_templates(self) -> None:
+        result = invoke_skill(
+            "tot_domain_plugin_bundle",
+            {
+                "skill_names": ["partition_function"],
+                "problem_statement": "Estimate a thermodynamic observable.",
+            },
+        )
+
+        self.assertEqual(result["selection_mode"], "explicit")
+        self.assertEqual(result["selected_skills"][0]["skill_name"], "partition_function")
+        self.assertEqual(result["recommended_skills"], ["partition_function"])
+        latex_values = {item["latex"] for item in result["representative_formulas"]}
+        self.assertIn(r"Z = \sum_i e^{-\beta E_i}", latex_values)
+        route_families = {item["route_family"] for item in result["route_seed_options"]}
+        self.assertEqual(route_families, {"partition-function"})
+
+    def test_domain_plugin_bundle_changes_formulas_when_skill_changes(self) -> None:
+        thermo = invoke_skill("tot_domain_plugin_bundle", {"skill_names": ["partition_function"]})
+        em = invoke_skill("tot_domain_plugin_bundle", {"skill_names": ["maxwell_equations_check"]})
+
+        thermo_formulas = {item["latex"] for item in thermo["representative_formulas"]}
+        em_formulas = {item["latex"] for item in em["representative_formulas"]}
+        self.assertIn(r"Z = \sum_i e^{-\beta E_i}", thermo_formulas)
+        self.assertIn(r"\nabla \cdot \mathbf{E} = \rho / \varepsilon_0", em_formulas)
+        self.assertNotEqual(thermo_formulas, em_formulas)
+
     def test_hard_rule_check_validates_models_and_boundary_conditions(self) -> None:
         result = invoke_skill(
             "tot_hard_rule_check",
@@ -1195,6 +1276,37 @@ class SkillInvokerTests(unittest.TestCase):
         self.assertIn("alternative correction quantities or closure choices", result["prompt_fragment"])
         self.assertIn("short and atomic", result["prompt_fragment"])
         self.assertIn("correction_mode", result["prompt_fragment"])
+
+    def test_stage_prompt_contract_meta_analysis_injects_plugin_formulas(self) -> None:
+        result = invoke_skill(
+            "tot_stage_prompt_contract",
+            {
+                "stage": "meta-analysis",
+                "problem_context": {
+                    "problem_statement": "A charged particle moves through an electromagnetic field.",
+                },
+            },
+        )
+
+        self.assertIn("Electrodynamics", result["prompt_fragment"])
+        self.assertIn("Representative LaTeX formulas:", result["prompt_fragment"])
+        self.assertIn(r"\nabla \cdot \mathbf{E} = \rho / \varepsilon_0", result["prompt_fragment"])
+
+    def test_stage_prompt_contract_meta_analysis_injects_selected_skill_templates(self) -> None:
+        result = invoke_skill(
+            "tot_stage_prompt_contract",
+            {
+                "stage": "meta-analysis",
+                "problem_context": {
+                    "problem_statement": "Estimate a thermodynamic observable.",
+                    "skill_names": ["partition_function"],
+                },
+            },
+        )
+
+        self.assertIn("Selected skill partition_function", result["prompt_fragment"])
+        self.assertIn("Formula templates:", result["prompt_fragment"])
+        self.assertIn(r"Z = \sum_i e^{-\beta E_i}", result["prompt_fragment"])
 
     def test_stage_prompt_contract_defines_orchestrator_schema(self) -> None:
         result = invoke_skill("tot_stage_prompt_contract", {"stage": "orchestrator"})
@@ -1388,6 +1500,68 @@ class NodeHarnessTests(unittest.TestCase):
 
         self.assertEqual(prepared["meta_task"]["first_step"], "identify governing relation")
         self.assertEqual(prepared["meta_task_progress"]["phase"], "strategy_scan")
+        self.assertEqual(requester.calls, [])
+
+    def test_local_chat_backend_uses_custom_domain_plugin_routes_for_meta_analysis(self) -> None:
+        requester = CapturingChatRequester()
+        backend = LocalChatDualModelBackendAdapter(requester=requester)
+
+        prepared = backend.prepare_problem_context(
+            {
+                "problem_statement": "Find the equilibrium market price.",
+                "domain_plugins": [
+                    {
+                        "name": "microeconomics",
+                        "label": "Microeconomics",
+                        "knowledge_scope": ["supply curve", "demand curve", "equilibrium condition"],
+                        "representative_formulas": [
+                            {
+                                "latex": r"Q_s(p) = Q_d(p)",
+                                "meaning": "Market-clearing equilibrium condition.",
+                            }
+                        ],
+                        "route_seed_options": [
+                            {
+                                "label": "market-clearing route",
+                                "route_family": "market-clearing",
+                                "governing_models": ["Supply-demand equilibrium"],
+                                "guidance": "Choose one equilibrium relation before adding shocks.",
+                                "correction_mode": "equilibrium-first scan",
+                                "correction_target": "market-clearing condition",
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+        route_families = {
+            str(item.get("route_family", ""))
+            for item in prepared["meta_task"].get("route_options", [])
+        }
+        self.assertEqual(route_families, {"market-clearing"})
+        self.assertEqual(requester.calls, [])
+
+    def test_local_chat_backend_uses_explicit_skill_routes_for_meta_analysis(self) -> None:
+        requester = CapturingChatRequester()
+        backend = LocalChatDualModelBackendAdapter(requester=requester)
+
+        prepared = backend.prepare_problem_context(
+            {
+                "problem_statement": "Estimate the target relation.",
+                "skill_names": ["partition_function"],
+            }
+        )
+
+        route_families = {
+            str(item.get("route_family", ""))
+            for item in prepared["meta_task"].get("route_options", [])
+        }
+        self.assertEqual(route_families, {"partition-function"})
+        self.assertIn(
+            "partition_function skill only",
+            prepared["meta_task"]["route_options"][0]["guidance"],
+        )
         self.assertEqual(requester.calls, [])
 
     def test_strategy_scan_proposal_keeps_modeling_model(self) -> None:

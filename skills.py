@@ -3174,12 +3174,1059 @@ def tot_hard_rule_check(params: Dict[str, Any]) -> Dict[str, Any]:
     }
 
 
+TOT_DOMAIN_PLUGIN_TEMPLATES: Dict[str, Dict[str, Any]] = {
+    "general-scientific": {
+        "name": "general-scientific",
+        "label": "General Scientific Reasoning",
+        "summary": "Domain-agnostic planning bundle used when no stronger subject plugin is selected.",
+        "knowledge_scope": [
+            "governing relations and objectives",
+            "constraints and admissibility conditions",
+            "invariants, symmetries, or conserved structure",
+            "boundary or initial conditions",
+            "approximations, closures, and limiting regimes",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"f(x) = 0",
+                "meaning": "Implicit governing relation or residual form.",
+            },
+            {
+                "latex": r"\mathcal{C}(x) \le 0",
+                "meaning": "Constraint or admissibility condition.",
+            },
+            {
+                "latex": r"x = x_0 + \varepsilon \, \delta x",
+                "meaning": "One-step correction or perturbative refinement.",
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "governing-relation route",
+                "route_family": "governing-relation",
+                "governing_models": ["Core governing relation"],
+                "guidance": "Name one governing relation or dominant dependency only.",
+                "correction_mode": "governing-law scan",
+                "correction_target": "active governing relation",
+            },
+            {
+                "label": "constraint route",
+                "route_family": "constraint",
+                "governing_models": ["Constraint relation"],
+                "guidance": "State one structural constraint or admissibility rule only.",
+                "correction_mode": "constraint-first scan",
+                "correction_target": "active constraint",
+            },
+            {
+                "label": "invariant route",
+                "route_family": "invariant",
+                "governing_models": ["Invariant structure"],
+                "guidance": "Name one symmetry, invariant, or conserved quantity only.",
+                "correction_mode": "invariant-first scan",
+                "correction_target": "active invariant",
+            },
+            {
+                "label": "closure route",
+                "route_family": "closure",
+                "governing_models": ["Closure assumption"],
+                "guidance": "Choose one approximation, constitutive closure, or modeling assumption only.",
+                "correction_mode": "closure-family scan",
+                "correction_target": "active closure",
+            },
+        ],
+        "match_terms": ["general", "cross-disciplinary", "interdisciplinary", "unknown domain"],
+    },
+    "theoretical-mechanics": {
+        "name": "theoretical-mechanics",
+        "label": "Analytical Mechanics",
+        "module": "Theoretical Mechanics",
+        "summary": "Mechanics bundle focused on force, energy, momentum, kinematics, and constraints.",
+        "knowledge_scope": [
+            "force balance and free-body structure",
+            "energy conservation and dissipation",
+            "momentum transfer and impulses",
+            "kinematics, coordinates, and constraints",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"\sum F = m a",
+                "meaning": "Force-balance route for translational dynamics.",
+                "related_skills": ["lagrangian_equations", "hamiltonian_equations"],
+            },
+            {
+                "latex": r"L = T - V",
+                "meaning": "Variational route in generalized coordinates.",
+                "related_skills": ["lagrangian_equations", "noether_conservation"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "force-balance route",
+                "route_family": "force-balance",
+                "governing_models": ["Newton's Second Law"],
+                "guidance": "Name one dominant force balance or one decisive force component only.",
+                "correction_mode": "direct force inventory",
+                "correction_target": "active force term",
+            },
+            {
+                "label": "energy route",
+                "route_family": "energy",
+                "governing_models": ["Work-Energy Theorem"],
+                "guidance": "State one governing energy relation or deferred loss term only.",
+                "correction_mode": "lossless baseline first",
+                "correction_target": "dissipation term",
+            },
+            {
+                "label": "momentum route",
+                "route_family": "momentum",
+                "governing_models": ["Momentum balance"],
+                "guidance": "State one momentum-transfer relation or impulse approximation only.",
+                "correction_mode": "impulse-balance scan",
+                "correction_target": "momentum exchange",
+            },
+        ],
+        "match_terms": [
+            "force",
+            "energy",
+            "momentum",
+            "mass",
+            "acceleration",
+            "friction",
+            "motion",
+            "lagrangian",
+            "hamiltonian",
+            "torque",
+            "equilibrium",
+        ],
+    },
+    "electrodynamics": {
+        "name": "electrodynamics",
+        "label": "Electrodynamics",
+        "module": "Electrodynamics",
+        "summary": "Field-theory bundle for Maxwell equations, potentials, media, and energy flux.",
+        "knowledge_scope": [
+            "field equations and source terms",
+            "potentials and gauge structure",
+            "boundary or interface conditions",
+            "energy flux and wave propagation",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"\nabla \cdot \mathbf{E} = \rho / \varepsilon_0",
+                "meaning": "Gauss-law route from source to field structure.",
+                "related_skills": ["maxwell_equations_check", "fields_from_potentials"],
+            },
+            {
+                "latex": r"\mathbf{S} = \frac{1}{\mu_0} \, \mathbf{E} \times \mathbf{B}",
+                "meaning": "Energy-flux route via the Poynting vector.",
+                "related_skills": ["poynting_vector"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "field-equation route",
+                "route_family": "field-equation",
+                "governing_models": ["Maxwell equations"],
+                "guidance": "Choose one governing field equation or source-field relation only.",
+                "correction_mode": "field-equation scan",
+                "correction_target": "active field relation",
+            },
+            {
+                "label": "potential route",
+                "route_family": "potential",
+                "governing_models": ["Scalar/vector potentials"],
+                "guidance": "Pick one potential representation or gauge condition only.",
+                "correction_mode": "representation-choice scan",
+                "correction_target": "potential or gauge",
+            },
+            {
+                "label": "boundary-matching route",
+                "route_family": "boundary-matching",
+                "governing_models": ["Boundary conditions"],
+                "guidance": "Name one interface condition or boundary family only.",
+                "correction_mode": "boundary-family scan",
+                "correction_target": "active boundary condition",
+            },
+        ],
+        "match_terms": [
+            "electric",
+            "magnetic",
+            "field",
+            "charge",
+            "current",
+            "maxwell",
+            "electromagnetic",
+            "potential",
+            "gauss",
+            "faraday",
+        ],
+    },
+    "quantum-mechanics": {
+        "name": "quantum-mechanics",
+        "label": "Quantum Mechanics",
+        "module": "Quantum Mechanics",
+        "summary": "Quantum bundle for eigenvalue problems, operators, state structure, and perturbations.",
+        "knowledge_scope": [
+            "hamiltonian and eigenvalue structure",
+            "operator algebra and commutators",
+            "boundary conditions and basis choice",
+            "perturbative corrections",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"\hat{H} \psi = E \psi",
+                "meaning": "Stationary eigenvalue route.",
+                "related_skills": ["schrodinger_1d", "angular_momentum_eigenstates"],
+            },
+            {
+                "latex": r"[\hat{A}, \hat{B}] = \hat{A}\hat{B} - \hat{B}\hat{A}",
+                "meaning": "Operator-compatibility and symmetry route.",
+                "related_skills": ["commutator", "pauli_algebra"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "eigenvalue route",
+                "route_family": "eigenvalue",
+                "governing_models": ["Stationary Schroedinger equation"],
+                "guidance": "Name one eigenvalue relation, basis, or separable structure only.",
+                "correction_mode": "eigenbasis scan",
+                "correction_target": "state representation",
+            },
+            {
+                "label": "operator route",
+                "route_family": "operator",
+                "governing_models": ["Operator algebra"],
+                "guidance": "Choose one operator identity, commutator, or symmetry relation only.",
+                "correction_mode": "operator-identity scan",
+                "correction_target": "active operator relation",
+            },
+            {
+                "label": "perturbation route",
+                "route_family": "perturbation",
+                "governing_models": ["Perturbation theory"],
+                "guidance": "State one perturbative split or correction Hamiltonian only.",
+                "correction_mode": "perturbation-order scan",
+                "correction_target": "active correction term",
+            },
+        ],
+        "match_terms": [
+            "quantum",
+            "wavefunction",
+            "schrodinger",
+            "hamiltonian",
+            "eigenvalue",
+            "spin",
+            "operator",
+            "commutator",
+            "perturbation",
+        ],
+    },
+    "thermodynamics": {
+        "name": "thermodynamics",
+        "label": "Thermodynamics and Statistical Physics",
+        "module": "Thermodynamics and Statistical Physics",
+        "summary": "Thermo/stat-mech bundle for state functions, ensembles, equations of state, and responses.",
+        "knowledge_scope": [
+            "state variables and equations of state",
+            "thermodynamic potentials and Maxwell relations",
+            "partition functions and ensembles",
+            "response coefficients and constrained derivatives",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"dU = T \, dS - P \, dV + \mu \, dN",
+                "meaning": "Fundamental differential route for state relations.",
+                "related_skills": ["thermodynamic_potentials", "thermodynamic_partial"],
+            },
+            {
+                "latex": r"Z = \sum_i e^{-\beta E_i}",
+                "meaning": "Ensemble route from the canonical partition function.",
+                "related_skills": ["partition_function", "statistical_distributions"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "state-function route",
+                "route_family": "state-function",
+                "governing_models": ["Thermodynamic differential"],
+                "guidance": "Name one state differential or balance relation only.",
+                "correction_mode": "state-differential scan",
+                "correction_target": "active state relation",
+            },
+            {
+                "label": "equation-of-state route",
+                "route_family": "equation-of-state",
+                "governing_models": ["Equation of state"],
+                "guidance": "Choose one constitutive state relation only.",
+                "correction_mode": "constitutive-state scan",
+                "correction_target": "equation of state",
+            },
+            {
+                "label": "ensemble route",
+                "route_family": "ensemble",
+                "governing_models": ["Partition function"],
+                "guidance": "Pick one ensemble or partition-function representation only.",
+                "correction_mode": "ensemble-choice scan",
+                "correction_target": "ensemble choice",
+            },
+        ],
+        "match_terms": [
+            "thermo",
+            "temperature",
+            "entropy",
+            "enthalpy",
+            "free energy",
+            "partition",
+            "ensemble",
+            "equation of state",
+            "heat",
+            "pressure",
+        ],
+    },
+    "special-relativity": {
+        "name": "special-relativity",
+        "label": "Special Relativity",
+        "module": "Special Relativity",
+        "summary": "Relativity bundle for invariants, boosts, frame transforms, and relativistic conservation.",
+        "knowledge_scope": [
+            "Lorentz transformations and frame changes",
+            "spacetime intervals and invariants",
+            "energy-momentum structure",
+            "relativistic limits and composition laws",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"s^2 = c^2 t^2 - x^2 - y^2 - z^2",
+                "meaning": "Invariant-interval route.",
+                "related_skills": ["lorentz_transform_event", "four_vector_inner_product"],
+            },
+            {
+                "latex": r"E^2 = p^2 c^2 + m^2 c^4",
+                "meaning": "Relativistic energy-momentum route.",
+                "related_skills": ["relativistic_energy_momentum"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "invariant route",
+                "route_family": "invariant",
+                "governing_models": ["Minkowski invariant"],
+                "guidance": "State one frame-invariant interval or four-vector relation only.",
+                "correction_mode": "invariant-first scan",
+                "correction_target": "active invariant",
+            },
+            {
+                "label": "frame-transform route",
+                "route_family": "frame-transform",
+                "governing_models": ["Lorentz transformation"],
+                "guidance": "Choose one frame transform or boost direction only.",
+                "correction_mode": "frame-choice scan",
+                "correction_target": "active frame transform",
+            },
+            {
+                "label": "energy-momentum route",
+                "route_family": "energy-momentum",
+                "governing_models": ["Relativistic energy-momentum relation"],
+                "guidance": "State one conserved four-momentum relation only.",
+                "correction_mode": "four-momentum scan",
+                "correction_target": "active conservation law",
+            },
+        ],
+        "match_terms": [
+            "relativity",
+            "lorentz",
+            "boost",
+            "spacetime",
+            "four-vector",
+            "proper time",
+            "relativistic",
+            "gamma",
+        ],
+    },
+    "optics-and-waves": {
+        "name": "optics-and-waves",
+        "label": "Optics and Waves",
+        "module": "Optics and Waves",
+        "summary": "Optics bundle for interference, diffraction, ray-transfer systems, and wave matching.",
+        "knowledge_scope": [
+            "phase accumulation and interference",
+            "diffraction and aperture structure",
+            "ray-transfer and imaging systems",
+            "wave boundary matching and polarization",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"I(\theta) \propto \mathrm{sinc}^2(\beta)",
+                "meaning": "Aperture-diffraction route.",
+                "related_skills": ["single_slit_diffraction", "multi_slit_intensity"],
+            },
+            {
+                "latex": r"m \lambda = d \sin \theta",
+                "meaning": "Grating or phase-matching route.",
+                "related_skills": ["grating_equation"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "phase route",
+                "route_family": "phase",
+                "governing_models": ["Phase accumulation"],
+                "guidance": "Name one phase relation or path-difference condition only.",
+                "correction_mode": "phase-difference scan",
+                "correction_target": "active phase term",
+            },
+            {
+                "label": "diffraction route",
+                "route_family": "diffraction",
+                "governing_models": ["Diffraction envelope"],
+                "guidance": "Choose one aperture or diffraction relation only.",
+                "correction_mode": "aperture-choice scan",
+                "correction_target": "active aperture effect",
+            },
+            {
+                "label": "boundary-matching route",
+                "route_family": "boundary-matching",
+                "governing_models": ["Wave boundary conditions"],
+                "guidance": "Fix one interface, polarization, or boundary condition only.",
+                "correction_mode": "interface-choice scan",
+                "correction_target": "active boundary condition",
+            },
+        ],
+        "match_terms": [
+            "optics",
+            "wave",
+            "diffraction",
+            "interference",
+            "lens",
+            "mirror",
+            "polarization",
+            "grating",
+        ],
+    },
+    "fluid-mechanics": {
+        "name": "fluid-mechanics",
+        "label": "Fluid Mechanics",
+        "module": "Fluid Mechanics",
+        "summary": "Continuum-flow bundle for conservation laws, constitutive closures, transport, and regime maps.",
+        "knowledge_scope": [
+            "mass and momentum conservation",
+            "pressure, viscosity, and constitutive closures",
+            "regime maps and dimensionless groups",
+            "transport, drag, and surface effects",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"\partial_t \rho + \nabla \cdot (\rho \mathbf{u}) = 0",
+                "meaning": "Continuity route from mass conservation.",
+                "related_skills": ["continuity_equation"],
+            },
+            {
+                "latex": r"\mathrm{Re} = \frac{\rho U L}{\mu}",
+                "meaning": "Regime-selection route via Reynolds number.",
+                "related_skills": ["reynolds_number"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "continuity route",
+                "route_family": "continuity",
+                "governing_models": ["Continuity equation"],
+                "guidance": "State one mass-conservation or incompressibility relation only.",
+                "correction_mode": "conservation-first scan",
+                "correction_target": "mass balance",
+            },
+            {
+                "label": "momentum-balance route",
+                "route_family": "momentum-balance",
+                "governing_models": ["Momentum equation"],
+                "guidance": "Name one dominant momentum balance or pressure-viscous competition only.",
+                "correction_mode": "dominant-term scan",
+                "correction_target": "active momentum balance",
+            },
+            {
+                "label": "regime-map route",
+                "route_family": "regime-map",
+                "governing_models": ["Dimensionless regime comparison"],
+                "guidance": "Identify one regime split or applicability test before deriving later details.",
+                "correction_mode": "regime-selection scan",
+                "correction_target": "applicable flow regime",
+            },
+        ],
+        "match_terms": [
+            "fluid",
+            "flow",
+            "viscosity",
+            "drag",
+            "terminal velocity",
+            "reynolds",
+            "navier",
+            "bernoulli",
+            "pressure",
+        ],
+    },
+}
+
+
+TOT_SKILL_TEMPLATE_OVERRIDES: Dict[str, Dict[str, Any]] = {
+    "lagrangian_equations": {
+        "knowledge_scope": [
+            "generalized coordinates and kinetic/potential energy",
+            "Euler-Lagrange structure and coordinate constraints",
+            "local dynamical updates in variational form",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"\frac{d}{dt}\left(\frac{\partial L}{\partial \dot{q}_i}\right) - \frac{\partial L}{\partial q_i} = 0",
+                "meaning": "Euler-Lagrange route for equations of motion.",
+                "related_skills": ["lagrangian_equations"],
+            }
+        ],
+        "route_seed_options": [
+            {
+                "label": "Euler-Lagrange route",
+                "route_family": "euler-lagrange",
+                "governing_models": ["Lagrangian mechanics"],
+                "guidance": "Use the lagrangian_equations skill only: state one generalized-coordinate relation or one energy term only.",
+                "correction_mode": "variational-structure scan",
+                "correction_target": "active generalized coordinate",
+            }
+        ],
+    },
+    "maxwell_equations_check": {
+        "knowledge_scope": [
+            "field-source consistency",
+            "divergence and curl constraints",
+            "electromagnetic boundary and propagation structure",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"\nabla \cdot \mathbf{E} = \rho / \varepsilon_0",
+                "meaning": "Gauss-law consistency route.",
+                "related_skills": ["maxwell_equations_check"],
+            },
+            {
+                "latex": r"\nabla \times \mathbf{B} = \mu_0 \mathbf{J} + \mu_0 \varepsilon_0 \partial_t \mathbf{E}",
+                "meaning": "Ampere-Maxwell consistency route.",
+                "related_skills": ["maxwell_equations_check"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "Maxwell-consistency route",
+                "route_family": "maxwell-consistency",
+                "governing_models": ["Maxwell equations"],
+                "guidance": "Use the maxwell_equations_check skill only: verify one divergence/curl relation or one source-field consistency condition.",
+                "correction_mode": "field-consistency scan",
+                "correction_target": "active Maxwell relation",
+            }
+        ],
+    },
+    "schrodinger_1d": {
+        "knowledge_scope": [
+            "stationary-state eigenvalue structure",
+            "potential-well or barrier modeling",
+            "boundary-condition-driven quantization",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"-\frac{\hbar^2}{2m}\frac{d^2\psi}{dx^2} + V(x)\psi = E\psi",
+                "meaning": "One-dimensional stationary Schroedinger route.",
+                "related_skills": ["schrodinger_1d"],
+            }
+        ],
+        "route_seed_options": [
+            {
+                "label": "Schroedinger-eigenvalue route",
+                "route_family": "schroedinger-eigenvalue",
+                "governing_models": ["Stationary Schroedinger equation"],
+                "guidance": "Use the schrodinger_1d skill only: state one eigenvalue relation, potential regime, or boundary condition only.",
+                "correction_mode": "eigenproblem scan",
+                "correction_target": "active potential or boundary regime",
+            }
+        ],
+    },
+    "partition_function": {
+        "knowledge_scope": [
+            "canonical ensemble state sums",
+            "thermodynamic observables derived from Z",
+            "temperature dependence and energy-level structure",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"Z = \sum_i e^{-\beta E_i}",
+                "meaning": "Canonical partition-function route.",
+                "related_skills": ["partition_function"],
+            },
+            {
+                "latex": r"U = -\frac{\partial}{\partial \beta} \ln Z",
+                "meaning": "Observable extraction route from the partition function.",
+                "related_skills": ["partition_function"],
+            },
+        ],
+        "route_seed_options": [
+            {
+                "label": "partition-function route",
+                "route_family": "partition-function",
+                "governing_models": ["Canonical ensemble"],
+                "guidance": "Use the partition_function skill only: choose one state-sum representation or one derived observable from Z.",
+                "correction_mode": "ensemble-state-sum scan",
+                "correction_target": "active observable from Z",
+            }
+        ],
+    },
+    "continuity_equation": {
+        "knowledge_scope": [
+            "mass conservation and transport balance",
+            "compressibility or incompressibility assumptions",
+            "flux structure across control surfaces",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"\partial_t \rho + \nabla \cdot (\rho \mathbf{u}) = 0",
+                "meaning": "Continuity route from mass conservation.",
+                "related_skills": ["continuity_equation"],
+            }
+        ],
+        "route_seed_options": [
+            {
+                "label": "continuity route",
+                "route_family": "continuity",
+                "governing_models": ["Mass conservation"],
+                "guidance": "Use the continuity_equation skill only: state one conservation law or one flux assumption only.",
+                "correction_mode": "transport-balance scan",
+                "correction_target": "active flux term",
+            }
+        ],
+    },
+    "lorentz_transform_event": {
+        "knowledge_scope": [
+            "frame changes and spacetime coordinates",
+            "Lorentz invariance and event mapping",
+            "kinematic interpretation across inertial frames",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"x'^\mu = \Lambda^\mu_{\ \nu} x^\nu",
+                "meaning": "Lorentz-transform route between inertial frames.",
+                "related_skills": ["lorentz_transform_event"],
+            }
+        ],
+        "route_seed_options": [
+            {
+                "label": "Lorentz-transform route",
+                "route_family": "lorentz-transform",
+                "governing_models": ["Lorentz transformation"],
+                "guidance": "Use the lorentz_transform_event skill only: choose one frame mapping or invariant-event interpretation.",
+                "correction_mode": "frame-mapping scan",
+                "correction_target": "active frame transform",
+            }
+        ],
+    },
+    "thin_lens_matrix": {
+        "knowledge_scope": [
+            "paraxial ray-transfer structure",
+            "optical element composition",
+            "focal constraints and imaging conditions",
+        ],
+        "representative_formulas": [
+            {
+                "latex": r"M_{\mathrm{lens}} = \begin{pmatrix} 1 & 0 \\ -1/f & 1 \end{pmatrix}",
+                "meaning": "Thin-lens ABCD-matrix route.",
+                "related_skills": ["thin_lens_matrix"],
+            }
+        ],
+        "route_seed_options": [
+            {
+                "label": "thin-lens matrix route",
+                "route_family": "thin-lens-matrix",
+                "governing_models": ["Paraxial optics"],
+                "guidance": "Use the thin_lens_matrix skill only: state one lens-transfer relation or one focal condition only.",
+                "correction_mode": "ray-transfer scan",
+                "correction_target": "active optical element",
+            }
+        ],
+    },
+}
+
+
+def _ordered_unique_strings(items: Sequence[Any]) -> List[str]:
+    values: List[str] = []
+    for item in items:
+        text = str(item).strip()
+        if text and text not in values:
+            values.append(text)
+    return values
+
+
+def _default_skill_template(skill_name: str) -> Dict[str, Any]:
+    entry = get_skill_entry(skill_name)
+    module = str(entry.get("module", "")).strip()
+    summary = str(entry.get("summary", "")).strip()
+    keywords = _ordered_unique_strings(entry.get("keywords", []))
+    primary_focus = keywords[0] if keywords else skill_name.replace("_", "-")
+    return {
+        "name": skill_name,
+        "label": skill_name,
+        "skill_name": skill_name,
+        "module": module,
+        "summary": summary,
+        "knowledge_scope": _ordered_unique_strings([summary, *keywords[:3]]),
+        "representative_formulas": [
+            {
+                "latex": rf"\mathrm{{{skill_name}}}(\cdots)",
+                "meaning": summary or f"Use the {skill_name} skill as the active modeling operator.",
+                "related_skills": [skill_name],
+            }
+        ],
+        "route_seed_options": [
+            {
+                "label": f"{skill_name} route",
+                "route_family": skill_name.replace("_", "-"),
+                "governing_models": [module or skill_name],
+                "guidance": f"Use the {skill_name} skill only: state one {primary_focus} relation, assumption, or structure that matches this skill.",
+                "correction_mode": "skill-specific scan",
+                "correction_target": primary_focus,
+            }
+        ],
+        "skill_names": [skill_name],
+        "keywords": keywords,
+    }
+
+
+def _build_skill_template(skill_name: str) -> Dict[str, Any]:
+    template = _default_skill_template(skill_name)
+    override = TOT_SKILL_TEMPLATE_OVERRIDES.get(skill_name, {})
+    if override:
+        if "label" in override:
+            template["label"] = str(override["label"]).strip() or template["label"]
+        if "module" in override:
+            template["module"] = str(override["module"]).strip() or template["module"]
+        if "summary" in override:
+            template["summary"] = str(override["summary"]).strip() or template["summary"]
+        if "knowledge_scope" in override:
+            template["knowledge_scope"] = _ordered_unique_strings(override.get("knowledge_scope", []))
+        if "representative_formulas" in override:
+            template["representative_formulas"] = _normalize_domain_plugin(
+                {
+                    "name": skill_name,
+                    "representative_formulas": override.get("representative_formulas", []),
+                },
+                fallback_name=skill_name,
+            )["representative_formulas"]
+        if "route_seed_options" in override:
+            template["route_seed_options"] = _normalize_domain_plugin(
+                {
+                    "name": skill_name,
+                    "route_seed_options": override.get("route_seed_options", []),
+                },
+                fallback_name=skill_name,
+            )["route_seed_options"]
+    return template
+
+
+def _skill_names_for_module(module: str) -> List[str]:
+    return sorted(
+        skill_name
+        for skill_name, entry in SKILL_REGISTRY.items()
+        if entry.get("module") == module and not skill_name.startswith("tot_")
+    )
+
+
+def _normalize_domain_plugin(plugin: Dict[str, Any], *, fallback_name: str) -> Dict[str, Any]:
+    name = str(plugin.get("name", fallback_name)).strip() or fallback_name
+    label = str(plugin.get("label", name)).strip() or name
+    module = str(plugin.get("module", "")).strip()
+    skill_names = _ordered_unique_strings(plugin.get("skill_names", []))
+    if not skill_names and module:
+        skill_names = _skill_names_for_module(module)
+
+    representative_formulas = []
+    for item in plugin.get("representative_formulas", []):
+        if not isinstance(item, dict):
+            continue
+        latex = str(item.get("latex", "")).strip()
+        if not latex:
+            continue
+        representative_formulas.append(
+            {
+                "latex": latex,
+                "meaning": str(item.get("meaning", "")).strip(),
+                "related_skills": _ordered_unique_strings(item.get("related_skills", [])),
+            }
+        )
+
+    route_seed_options = []
+    for item in plugin.get("route_seed_options", []):
+        if not isinstance(item, dict):
+            continue
+        route_family = str(item.get("route_family", "")).strip()
+        if not route_family:
+            continue
+        route_seed_options.append(
+            {
+                "label": str(item.get("label", route_family)).strip() or route_family,
+                "route_family": route_family,
+                "governing_models": _ordered_unique_strings(item.get("governing_models", [])),
+                "guidance": str(item.get("guidance", "")).strip(),
+                "correction_mode": str(item.get("correction_mode", "")).strip(),
+                "correction_target": str(item.get("correction_target", "")).strip(),
+            }
+        )
+
+    return {
+        "name": name,
+        "label": label,
+        "module": module,
+        "summary": str(plugin.get("summary", "")).strip(),
+        "knowledge_scope": _ordered_unique_strings(plugin.get("knowledge_scope", [])),
+        "representative_formulas": representative_formulas,
+        "route_seed_options": route_seed_options,
+        "skill_names": skill_names,
+        "match_terms": _ordered_unique_strings(plugin.get("match_terms", [])),
+    }
+
+
+def _domain_plugin_aliases(plugin: Dict[str, Any]) -> List[str]:
+    aliases = [plugin.get("name", ""), plugin.get("label", ""), plugin.get("module", "")]
+    aliases.extend(plugin.get("match_terms", []))
+    normalized: List[str] = []
+    for alias in aliases:
+        text = str(alias).strip().lower()
+        if not text:
+            continue
+        if text not in normalized:
+            normalized.append(text)
+        spaced = text.replace("-", " ")
+        if spaced not in normalized:
+            normalized.append(spaced)
+    return normalized
+
+
+def _render_domain_plugin_prompt_fragment(plugins: Sequence[Dict[str, Any]]) -> str:
+    if not plugins:
+        return (
+            "If no domain plugin is selected, use a generic route scan over governing relations, constraints, invariants, "
+            "boundary conditions, limiting cases, approximations, and closures."
+        )
+
+    sentences: List[str] = []
+    for plugin in plugins[:3]:
+        parts = [f"Domain plugin {plugin['label']}." ]
+        scope_text = ", ".join(plugin.get("knowledge_scope", [])[:4])
+        if scope_text:
+            parts.append(f"Knowledge scope: {scope_text}.")
+        formulas = plugin.get("representative_formulas", [])[:2]
+        if formulas:
+            formula_text = "; ".join(
+                f"{item['latex']} ({item['meaning']})" if item.get("meaning") else item["latex"]
+                for item in formulas
+            )
+            parts.append(f"Representative LaTeX formulas: {formula_text}.")
+        skills_text = ", ".join(plugin.get("skill_names", [])[:5])
+        if skills_text:
+            parts.append(f"Relevant skills: {skills_text}.")
+        sentences.append(" ".join(parts))
+    sentences.append(
+        "Use the selected plugin scopes, formulas, and skills to seed route_options and step_blueprints; each route should isolate exactly one governing law/model, structural constraint, boundary-condition family, approximation, or closure choice."
+    )
+    return " ".join(sentences)
+
+
+def _render_skill_template_prompt_fragment(skill_templates: Sequence[Dict[str, Any]]) -> str:
+    if not skill_templates:
+        return ""
+
+    sentences: List[str] = []
+    for template in skill_templates[:4]:
+        parts = [f"Selected skill {template['skill_name']} ({template.get('module', '') or 'unknown module'})."]
+        if template.get("summary"):
+            parts.append(f"Role: {template['summary']}")
+        scope_text = ", ".join(template.get("knowledge_scope", [])[:3])
+        if scope_text:
+            parts.append(f"Knowledge scope: {scope_text}.")
+        formulas = template.get("representative_formulas", [])[:2]
+        if formulas:
+            formula_text = "; ".join(
+                f"{item['latex']} ({item['meaning']})" if item.get("meaning") else item["latex"]
+                for item in formulas
+            )
+            parts.append(f"Formula templates: {formula_text}.")
+        routes = ", ".join(item.get("route_family", "") for item in template.get("route_seed_options", [])[:2] if item.get("route_family"))
+        if routes:
+            parts.append(f"Preferred route families: {routes}.")
+        sentences.append(" ".join(parts))
+    sentences.append(
+        "Use the selected skills as the primary theme switch: route_options and step_blueprints should stay centered on those skill-specific formulas, quantities, and assumptions."
+    )
+    return " ".join(sentences)
+
+
+def tot_domain_plugin_bundle(params: Dict[str, Any]) -> Dict[str, Any]:
+    r"""Build a pluggable domain bundle for planning prompts and route seeding."""
+
+    problem_context = dict(params.get("problem_context", {})) if isinstance(params.get("problem_context"), dict) else {}
+    explicit_skill_names = params.get("skill_names", problem_context.get("skill_names", []))
+    if isinstance(explicit_skill_names, (str, bytes)):
+        explicit_skill_names = [str(explicit_skill_names)]
+    elif explicit_skill_names in (None, ""):
+        explicit_skill_names = []
+    else:
+        explicit_skill_names = [str(item) for item in explicit_skill_names]
+    explicit_skill_names = _ordered_unique_strings(explicit_skill_names)
+
+    selected_skill_templates: List[Dict[str, Any]] = []
+    if explicit_skill_names:
+        for skill_name in explicit_skill_names:
+            if skill_name not in SKILL_REGISTRY:
+                continue
+            selected_skill_templates.append(_build_skill_template(skill_name))
+
+    custom_plugins = params.get("domain_plugins", problem_context.get("domain_plugins", []))
+    if custom_plugins in (None, ""):
+        custom_plugins = []
+    if custom_plugins and not isinstance(custom_plugins, list):
+        raise TypeError("domain_plugins must be a list of plugin dictionaries.")
+
+    normalized_custom_plugins = [
+        _normalize_domain_plugin(item, fallback_name=f"custom-plugin-{index + 1}")
+        for index, item in enumerate(custom_plugins)
+        if isinstance(item, dict)
+    ]
+    if selected_skill_templates:
+        selected_plugins = [
+            {
+                "name": template["name"],
+                "label": template["label"],
+                "module": template["module"],
+                "summary": template["summary"],
+                "knowledge_scope": list(template.get("knowledge_scope", [])),
+                "representative_formulas": [dict(item) for item in template.get("representative_formulas", [])],
+                "route_seed_options": [dict(item) for item in template.get("route_seed_options", [])],
+                "skill_names": list(template.get("skill_names", [])),
+            }
+            for template in selected_skill_templates
+        ]
+        selection_mode = "explicit"
+    elif normalized_custom_plugins:
+        selected_plugins = normalized_custom_plugins
+        selection_mode = "custom"
+    else:
+        explicit_domains = params.get("domain", problem_context.get("domain", problem_context.get("discipline", [])))
+        if isinstance(explicit_domains, (str, bytes)):
+            explicit_domain_list = [str(explicit_domains)]
+        elif explicit_domains in (None, ""):
+            explicit_domain_list = []
+        else:
+            explicit_domain_list = [str(item) for item in explicit_domains]
+        explicit_domain_list = _ordered_unique_strings(explicit_domain_list)
+
+        query_text = " ".join(
+            part
+            for part in [
+                str(params.get("query", "")).strip(),
+                str(problem_context.get("skill_query", "")).strip(),
+                str(params.get("problem_statement", problem_context.get("problem_statement", ""))).strip(),
+                str(problem_context.get("task", "")).strip(),
+            ]
+            if part
+        ).lower()
+
+        selected_plugins = []
+        selection_mode = "fallback"
+        for key, template in TOT_DOMAIN_PLUGIN_TEMPLATES.items():
+            plugin = _normalize_domain_plugin(template, fallback_name=key)
+            if explicit_domain_list and any(
+                domain.lower() in _domain_plugin_aliases(plugin)
+                for domain in explicit_domain_list
+            ):
+                selected_plugins.append(plugin)
+        if selected_plugins:
+            selection_mode = "explicit"
+        else:
+            for key, template in TOT_DOMAIN_PLUGIN_TEMPLATES.items():
+                if key == "general-scientific":
+                    continue
+                plugin = _normalize_domain_plugin(template, fallback_name=key)
+                if any(alias in query_text for alias in _domain_plugin_aliases(plugin)):
+                    selected_plugins.append(plugin)
+            if selected_plugins:
+                selection_mode = "inferred"
+            else:
+                selected_plugins = [
+                    _normalize_domain_plugin(
+                        TOT_DOMAIN_PLUGIN_TEMPLATES["general-scientific"],
+                        fallback_name="general-scientific",
+                    )
+                ]
+
+    knowledge_scope = _ordered_unique_strings(
+        item
+        for plugin in selected_plugins
+        for item in plugin.get("knowledge_scope", [])
+    )
+    representative_formulas = [
+        {
+            "plugin_name": plugin["name"],
+            "plugin_label": plugin["label"],
+            "latex": item["latex"],
+            "meaning": item["meaning"],
+            "related_skills": list(item.get("related_skills", [])),
+        }
+        for plugin in selected_plugins
+        for item in plugin.get("representative_formulas", [])
+    ]
+    route_seed_options = [
+        dict(item)
+        for plugin in selected_plugins
+        for item in plugin.get("route_seed_options", [])
+    ]
+    recommended_skills = _ordered_unique_strings(
+        skill_name
+        for plugin in selected_plugins
+        for skill_name in plugin.get("skill_names", [])
+    )
+
+    if selected_skill_templates:
+        prompt_fragment = _render_skill_template_prompt_fragment(selected_skill_templates)
+    else:
+        prompt_fragment = _render_domain_plugin_prompt_fragment(selected_plugins)
+
+    return {
+        "selection_mode": selection_mode,
+        "selected_plugins": [
+            {
+                key: value
+                for key, value in plugin.items()
+                if key != "match_terms"
+            }
+            for plugin in selected_plugins
+        ],
+        "selected_skills": [
+            {
+                key: value
+                for key, value in template.items()
+                if key != "keywords"
+            }
+            for template in selected_skill_templates
+        ],
+        "knowledge_scope": knowledge_scope,
+        "representative_formulas": representative_formulas,
+        "recommended_skills": recommended_skills,
+        "route_seed_options": route_seed_options,
+        "prompt_fragment": prompt_fragment,
+    }
+
+
 def tot_stage_prompt_contract(params: Dict[str, Any]) -> Dict[str, Any]:
     r"""Return stage-specific JSON format contracts and prompt fragments for ToT chat stages."""
 
     stage = str(params.get("stage", "")).strip().lower()
     if not stage:
         raise ValueError("tot_stage_prompt_contract requires a non-empty 'stage'.")
+
+    domain_bundle = tot_domain_plugin_bundle(params)
+    domain_plugin_prompt = str(domain_bundle.get("prompt_fragment", "")).strip()
 
     contracts: Dict[str, Dict[str, Any]] = {
         "meta-analysis": {
@@ -3197,7 +4244,8 @@ def tot_stage_prompt_contract(params: Dict[str, Any]) -> Dict[str, Any]:
             "prompt_fragment": (
                 "You are the ToT planning model. Analyze the problem once at session creation time and return only a JSON object "
                 "with keys objective, givens, unknowns, minimal_subproblems, step_ordering, first_step, completion_signals. "
-                "The first item in minimal_subproblems and step_ordering must be a route-splitting checkpoint only: preserve many plausible modeling routes across dimensions such as force balance, energy, momentum, kinematics, geometry, symmetry, limiting cases, dimensional analysis, boundary conditions, approximations, and equivalent formulations, while noting governing laws/models, hidden assumptions, deferred corrections, and alternative correction quantities or closure choices without solving the target. "
+                "The first item in minimal_subproblems and step_ordering must be a route-splitting checkpoint only: preserve many plausible modeling routes by scanning the active domain plugin guidance rather than relying on one fixed subject-specific route list, while still noting governing laws/models, hidden assumptions, deferred corrections, and alternative correction quantities or closure choices without solving the target. "
+                f"{domain_plugin_prompt} "
                 "Keep each route option and step blueprint short and atomic: each one should represent the simplest route-local first move, such as naming one governing law/model, one decisive assumption, or one active correction quantity or closure. Do not let a single step both compare many routes and refine them. "
                 "Every later item must refine exactly one quantity, relation, assumption, approximation, or correction term. Prefer breadth before commitment: if several routes or correction styles look viable, keep them visible in the plan so later orchestration can choose among them. If useful, also include optional route_options and step_blueprints objects that preserve route_family, governing_models, assumptions, deferred_terms, target quantities, correction_mode, and correction_target for distributed downstream reasoning. Keep the plan coarse and action-oriented; later per-step orchestration will strictly split each checkpoint into one executable micro task. Do not solve the full problem. Do not use markdown."
             ),
@@ -3885,6 +4933,16 @@ SKILL_REGISTRY: Dict[str, Dict[str, Any]] = {
         returns="dict",
         summary="Apply deterministic veto rules such as missing variables, forbidden patterns, and dimension mismatches.",
         keywords=("hard rule", "validation", "dimension check", "veto", "tot"),
+    ),
+    "tot_domain_plugin_bundle": _skill_entry(
+        tot_domain_plugin_bundle,
+        module="Extended Utilities",
+        section="7.x",
+        call_style="params_dict",
+        signature="tot_domain_plugin_bundle(params: dict) -> dict",
+        returns="dict",
+        summary="Build a pluggable domain bundle with knowledge scope, representative LaTeX formulas, and route seeds.",
+        keywords=("plugin", "domain", "latex", "meta-analysis", "route planning", "knowledge scope"),
     ),
     "tot_stage_prompt_contract": _skill_entry(
         tot_stage_prompt_contract,

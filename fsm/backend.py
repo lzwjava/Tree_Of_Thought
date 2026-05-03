@@ -51,7 +51,7 @@ def _fallback_stage_prompt_contract(stage: str) -> dict[str, Any]:
             "prompt_fragment": (
                 "You are the ToT planning model. Analyze the problem once at session creation time and return only a JSON object "
                 "with keys objective, givens, unknowns, minimal_subproblems, step_ordering, first_step, completion_signals. "
-                "Keep the plan coarse: make the first checkpoint a route-splitting step that preserves many modeling routes across dimensions such as force balance, energy, momentum, kinematics, geometry, symmetry, limiting cases, dimensional analysis, boundary conditions, approximations, and equivalent formulations. Within each plausible route, also contrast different correction quantities or closure choices when they change the modeling path. Keep each route option and step blueprint short and atomic: each one should represent the simplest route-local first move, such as naming one governing law/model, one decisive assumption, or one active correction quantity or closure. Later per-step orchestration will strictly decompose each checkpoint into one executable micro task. "
+                "Keep the plan coarse: make the first checkpoint a route-splitting step that preserves many modeling routes from the active domain plugin guidance or, if no plugin is provided, from general axes such as governing laws, structural constraints, invariants, boundary conditions, limiting cases, dimensional checks, approximations, equivalent formulations, and domain-specific closures. Within each plausible route, also contrast different correction quantities or closure choices when they change the modeling path. Keep each route option and step blueprint short and atomic: each one should represent the simplest route-local first move, such as naming one governing law/model, one decisive assumption, or one active correction quantity or closure. Later per-step orchestration will strictly decompose each checkpoint into one executable micro task. "
                 "Do not solve the full problem. Do not use markdown."
             )
         },
@@ -98,10 +98,36 @@ def _fallback_stage_prompt_contract(stage: str) -> dict[str, Any]:
 
 
 def _load_stage_prompt_contract(stage: str) -> dict[str, Any]:
+    return _load_stage_prompt_contract_with_context(stage)
+
+
+def _load_domain_plugin_bundle(problem_context: Optional[dict[str, Any]] = None) -> dict[str, Any]:
     try:
         skills_module = import_module("skills")
         invoke_skill = getattr(skills_module, "invoke_skill")
-        result = invoke_skill("tot_stage_prompt_contract", {"stage": stage})
+        payload: dict[str, Any] = {}
+        if isinstance(problem_context, dict) and problem_context:
+            payload["problem_context"] = dict(problem_context)
+        result = invoke_skill("tot_domain_plugin_bundle", payload)
+        if isinstance(result, dict):
+            return dict(result)
+    except Exception:
+        pass
+    return {}
+
+
+def _load_stage_prompt_contract_with_context(
+    stage: str,
+    *,
+    contract_context: Optional[dict[str, Any]] = None,
+) -> dict[str, Any]:
+    try:
+        skills_module = import_module("skills")
+        invoke_skill = getattr(skills_module, "invoke_skill")
+        payload: dict[str, Any] = {"stage": stage}
+        if str(stage).strip().lower() == "meta-analysis" and isinstance(contract_context, dict) and contract_context:
+            payload["problem_context"] = dict(contract_context)
+        result = invoke_skill("tot_stage_prompt_contract", payload)
         if isinstance(result, dict) and result.get("prompt_fragment"):
             return dict(result)
     except Exception:
@@ -1108,7 +1134,19 @@ class LocalChatDualModelBackendAdapter(ReasoningBackendAdapter):
         )
 
     def _should_use_local_fast_meta_analysis(self, problem_context: dict[str, Any]) -> bool:
-        allowed_keys = {"problem_statement", "givens", "unknowns", "task", "notes", "known_context"}
+        allowed_keys = {
+            "problem_statement",
+            "givens",
+            "unknowns",
+            "task",
+            "notes",
+            "known_context",
+            "domain",
+            "discipline",
+            "skill_names",
+            "domain_plugins",
+            "skill_query",
+        }
         for key, value in problem_context.items():
             if key not in allowed_keys and value not in (None, "", [], {}):
                 return False
@@ -1161,7 +1199,8 @@ class LocalChatDualModelBackendAdapter(ReasoningBackendAdapter):
             self._build_local_meta_analysis_route_seed_text(
                 problem_context,
                 summarized_context=summarized_context,
-            )
+            ),
+            problem_context=problem_context,
         )
 
         fast_payload = {
@@ -1184,8 +1223,24 @@ class LocalChatDualModelBackendAdapter(ReasoningBackendAdapter):
         }
         return _coerce_model_payload(MetaAnalysisPayload, fast_payload)
 
-    def _derive_fast_local_route_options(self, problem_statement: str) -> list[dict[str, Any]]:
+    def _derive_fast_local_route_options(
+        self,
+        problem_statement: str,
+        *,
+        problem_context: Optional[dict[str, Any]] = None,
+    ) -> list[dict[str, Any]]:
         normalized = problem_statement.lower()
+        domain_bundle = _load_domain_plugin_bundle(problem_context)
+        plugin_route_options = [
+            dict(item)
+            for item in domain_bundle.get("route_seed_options", [])
+            if isinstance(item, dict) and str(item.get("route_family", "")).strip()
+        ]
+        selection_mode = str(domain_bundle.get("selection_mode", "")).strip().lower()
+
+        if plugin_route_options and selection_mode in {"custom", "explicit"}:
+            return plugin_route_options
+
         asks_answer_change = self._contains_any_keyword(
             normalized,
             {
@@ -1372,6 +1427,9 @@ class LocalChatDualModelBackendAdapter(ReasoningBackendAdapter):
                 },
             ]
 
+        if plugin_route_options and selection_mode == "inferred":
+            return plugin_route_options
+
         return [
             {
                 "label": "dependency route",
@@ -1533,7 +1591,10 @@ class LocalChatDualModelBackendAdapter(ReasoningBackendAdapter):
         return self._call_chat_model(
             stage="meta-analysis",
             model=self.planning_model,
-            system_prompt=self._stage_system_prompt("meta-analysis"),
+            system_prompt=self._stage_system_prompt(
+                "meta-analysis",
+                contract_context=request.get("problem_context", {}),
+            ),
             input_payload={"stage": "meta-analysis", "request": request},
             response_model=MetaAnalysisPayload,
         )
@@ -1627,7 +1688,8 @@ class LocalChatDualModelBackendAdapter(ReasoningBackendAdapter):
             self._build_local_meta_analysis_route_seed_text(
                 problem_context,
                 summarized_context=summarized_context,
-            )
+            ),
+            problem_context=problem_context,
         )
 
         fallback_payload = {
@@ -2910,8 +2972,13 @@ class LocalChatDualModelBackendAdapter(ReasoningBackendAdapter):
         return 120
 
     @classmethod
-    def _stage_system_prompt(cls, stage: str) -> str:
-        contract = _load_stage_prompt_contract(stage)
+    def _stage_system_prompt(
+        cls,
+        stage: str,
+        *,
+        contract_context: Optional[dict[str, Any]] = None,
+    ) -> str:
+        contract = _load_stage_prompt_contract_with_context(stage, contract_context=contract_context)
         prompt_fragment = str(contract.get("prompt_fragment", "Return only a JSON object. Do not use markdown."))
         output_contract = cls._stage_output_contract(stage)
         required_keys = output_contract["required_keys"]
