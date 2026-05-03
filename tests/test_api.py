@@ -13,7 +13,12 @@ from fsm import (
     ReflectionRequest,
 )
 from tests.test_harness import ApproveDeleteReviewAdapter, MetaTaskStepBackendAdapter
-from tot_api import ChatBackendConfig, SchedulerSessionStore, create_app
+from tot_api import (
+    DEFAULT_PROBLEM_CONTEXT_DRAFT,
+    ChatBackendConfig,
+    SchedulerSessionStore,
+    create_app,
+)
 
 
 def deterministic_adapter_bundle(_config: ChatBackendConfig):
@@ -127,6 +132,15 @@ class ToTAPITests(unittest.TestCase):
             ChatBackendConfig().non_terminal_evaluation_model,
             "qwen2.5-0.5b-instruct-mlx",
         )
+
+    def test_defaults_endpoint_returns_frontend_drafts(self) -> None:
+        response = self.client.get("/api/tot/defaults")
+
+        self.assertEqual(response.status_code, 200)
+        payload = response.json()
+        self.assertEqual(payload["problem_context"], DEFAULT_PROBLEM_CONTEXT_DRAFT)
+        self.assertEqual(payload["scheduler"]["expansion_budget"], 8)
+        self.assertEqual(payload["scheduler"]["children_key"], "children")
 
     def test_create_session_accepts_custom_non_terminal_evaluation_model(self) -> None:
         captured = {}

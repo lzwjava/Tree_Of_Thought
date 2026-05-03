@@ -20,7 +20,7 @@ const RECOMMENDED_MODEL_PRESET = {
   timeoutSeconds: "120",
 };
 
-const DEFAULT_PROBLEM_CONTEXT = {
+const FALLBACK_DEFAULT_PROBLEM_CONTEXT = {
   task:
     "Use the modeling model to propose the next reasoning step, then score each step for physical consistency and variable grounding.",
   notes: [
@@ -116,7 +116,7 @@ boot().catch((error) => {
 });
 
 async function boot() {
-  applyDefaultDrafts();
+  await applyDefaultDrafts();
   restoreDraft();
   wireEvents();
   pushStatusLog(
@@ -145,12 +145,37 @@ function emptyTreeModel() {
   };
 }
 
-function applyDefaultDrafts() {
+async function applyDefaultDrafts() {
+  const defaults = await loadDefaultDrafts();
   if (!dom.problemContextInput.value.trim()) {
-    dom.problemContextInput.value = JSON.stringify(DEFAULT_PROBLEM_CONTEXT, null, 2);
+    dom.problemContextInput.value = JSON.stringify(defaults.problem_context, null, 2);
   }
   if (!dom.schedulerConfigInput.value.trim()) {
-    dom.schedulerConfigInput.value = JSON.stringify(DEFAULT_SCHEDULER_CONFIG, null, 2);
+    dom.schedulerConfigInput.value = JSON.stringify(defaults.scheduler, null, 2);
+  }
+}
+
+async function loadDefaultDrafts() {
+  const fallback = {
+    problem_context: FALLBACK_DEFAULT_PROBLEM_CONTEXT,
+    scheduler: DEFAULT_SCHEDULER_CONFIG,
+  };
+  try {
+    const response = await fetch("/api/tot/defaults");
+    if (!response.ok) {
+      return fallback;
+    }
+    const payload = await response.json();
+    return {
+      problem_context: isPlainObject(payload.problem_context)
+        ? payload.problem_context
+        : fallback.problem_context,
+      scheduler: isPlainObject(payload.scheduler)
+        ? payload.scheduler
+        : fallback.scheduler,
+    };
+  } catch (_error) {
+    return fallback;
   }
 }
 

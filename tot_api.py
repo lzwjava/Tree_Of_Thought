@@ -33,6 +33,21 @@ SchedulerOperationResult = TypeVar("SchedulerOperationResult")
 FRONTEND_DIR = Path(__file__).resolve().parent / "frontend"
 FRONTEND_INDEX = FRONTEND_DIR / "index.html"
 
+DEFAULT_PROBLEM_CONTEXT_DRAFT: dict[str, Any] = {
+    "task": (
+        "Use the modeling model to propose the next reasoning step, then score each step for physical consistency "
+        "and variable grounding."
+    ),
+    "notes": [
+        "The frontend polls the live scheduler state and renders it as an ASCII tree.",
+        "Node deletion is routed through the backend review model before the subtree is removed.",
+    ],
+    "known_context": {
+        "objective": "Derive and prune a useful physical reasoning tree.",
+        "expected_output": "concise, structured, and physically valid intermediate steps",
+    },
+}
+
 AdapterBundleFactory = Callable[
     ["ChatBackendConfig"],
     tuple[Callable[[dict[str, Any]], ReasoningBackendAdapter], NodeDeletionReviewAdapter],
@@ -58,10 +73,20 @@ class SchedulerConfig(BaseModel):
 
 
 class CreateSessionRequest(BaseModel):
-    problem_context: dict[str, Any] = Field(default_factory=dict)
+    problem_context: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Optional structured context merged with problem_statement. See /api/tot/defaults for the UI draft shape.",
+    )
     backend: ChatBackendConfig = Field(default_factory=ChatBackendConfig)
     scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
     run_on_create: bool = True
+
+
+class FrontendDefaultsResponse(BaseModel):
+    problem_context: dict[str, Any] = Field(
+        default_factory=lambda: deepcopy(DEFAULT_PROBLEM_CONTEXT_DRAFT)
+    )
+    scheduler: SchedulerConfig = Field(default_factory=SchedulerConfig)
 
 
 class RunSessionRequest(BaseModel):
@@ -322,6 +347,10 @@ def create_app(
     @app.get("/health")
     def health() -> dict[str, str]:
         return {"status": "ok"}
+
+    @app.get("/api/tot/defaults", response_model=FrontendDefaultsResponse)
+    def get_defaults() -> FrontendDefaultsResponse:
+        return FrontendDefaultsResponse()
 
     @app.post("/api/tot/sessions", response_model=SessionStateResponse)
     def create_session(request: CreateSessionRequest) -> SessionStateResponse:
