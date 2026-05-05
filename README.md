@@ -1,5 +1,7 @@
 # Tree_Of_Thought
 
+<video src="https://github.com/user-attachments/assets/34a0f5e0-1d53-4231-a2f7-dc1f987f57d6" controls width="100%"></video>
+
 Tree_Of_Thought is an external Tree-of-Thought reasoning system for physics-heavy problem solving.
 
 Instead of relying on a model's hidden built-in chain-of-thought inside one opaque completion, this project turns reasoning into an explicit, inspectable, controllable tree with live state, scoring, pruning, and deterministic tool support.
